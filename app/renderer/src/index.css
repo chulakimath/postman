@@ -1,0 +1,136 @@
+/**
+ * Global Styles
+ * 
+ * TailwindCSS base, components, and utilities.
+ * Plus custom global styles for the application.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom global styles */
+@layer base {
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  /* Custom scrollbar styles (dark theme) */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: #1a1a1a;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #3d3d3d;
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4a4a4a;
+  }
+  
+  /* Selection color */
+  ::selection {
+    background: rgba(255, 108, 55, 0.3);
+    color: #ffffff;
+  }
+  
+  /* Remove outline on focus (we'll add custom focus styles) */
+  *:focus {
+    outline: none;
+  }
+  
+  /* Focus visible for accessibility */
+  *:focus-visible {
+    @apply ring-2 ring-accent-orange ring-offset-2 ring-offset-surface-1;
+  }
+}
+
+@layer components {
+  /* Panel resize handle */
+  .resize-handle {
+    @apply w-1 bg-transparent hover:bg-accent-orange/30 transition-colors cursor-col-resize;
+  }
+  
+  .resize-handle-active {
+    @apply bg-accent-orange/50;
+  }
+  
+  /* Input base styles */
+  .input-base {
+    @apply bg-surface-3 border border-border rounded-md px-3 py-2 text-text-primary 
+           placeholder:text-text-muted focus:border-accent-orange focus:ring-1 
+           focus:ring-accent-orange transition-colors;
+  }
+  
+  /* Button base styles */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md 
+           font-medium transition-all duration-150 disabled:opacity-50 
+           disabled:cursor-not-allowed;
+  }
+  
+  .btn-primary {
+    @apply btn bg-accent-orange text-white hover:bg-accent-orange-hover 
+           active:scale-[0.98];
+  }
+  
+  .btn-secondary {
+    @apply btn bg-surface-3 text-text-primary border border-border 
+           hover:bg-surface-4 active:scale-[0.98];
+  }
+  
+  .btn-ghost {
+    @apply btn bg-transparent text-text-secondary hover:bg-surface-3 
+           hover:text-text-primary;
+  }
+  
+  /* Tab styles */
+  .tab {
+    @apply px-4 py-2 text-sm font-medium text-text-secondary border-b-2 
+           border-transparent hover:text-text-primary transition-colors;
+  }
+  
+  .tab-active {
+    @apply text-text-primary border-accent-orange;
+  }
+  
+  /* Badge styles */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+  
+  /* Method badges with specific colors */
+  .method-badge {
+    @apply badge font-mono uppercase;
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbar but allow scroll */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Text truncate with ellipsis */
+  .truncate-text {
+    @apply truncate;
+  }
+  
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-accent-orange to-accent-yellow 
+           bg-clip-text text-transparent;
+  }
+}
