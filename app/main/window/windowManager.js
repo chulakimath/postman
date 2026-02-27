@@ -37,11 +37,13 @@ const createWindow = () => {
     height: 900,
     minWidth: 1000,
     minHeight: 600,
-    
+
     // Window appearance
     backgroundColor: '#1a1a1a', // Dark background to prevent flash
     title: 'Postman Desktop',
-    
+    icon: path.join(__dirname, '..', '..', 'assets', 'postman.ico'),
+
+
     // Security settings (VERY IMPORTANT)
     webPreferences: {
       nodeIntegration: false,        // Never allow direct Node access
@@ -55,7 +57,7 @@ const createWindow = () => {
   if (isDev()) {
     // Development: Load from Vite dev server
     mainWindow.loadURL('http://localhost:5173');
-    
+
     // Open DevTools in development
     mainWindow.webContents.openDevTools();
   } else {

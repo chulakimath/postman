@@ -20,7 +20,28 @@
     "electron-builder": "^24.9.0",
     "wait-on": "^7.2.0"
   },
-  "keywords": ["api", "testing", "postman", "electron"],
+  "keywords": [
+    "api",
+    "testing",
+    "postman",
+    "electron"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "build": {
+    "appId": "com.postmandesktop.app",
+    "productName": "Postman Desktop",
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "icon": "app/assets/postman.ico"
+    },
+    "win": {
+      "icon": "app/assets/postman.ico"
+    },
+    "linux": {
+      "icon": "app/assets/postman.ico"
+    }
+  }
 }
