@@ -35,13 +35,13 @@
       "output": "dist"
     },
     "mac": {
-      "icon": "app/assets/postman.ico"
+      "icon": "app/assets/postman.png"
     },
     "win": {
       "icon": "app/assets/postman.ico"
     },
     "linux": {
-      "icon": "app/assets/postman.ico"
+      "icon": "app/assets/postman.png"
     }
   }
 }
