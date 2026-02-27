@@ -6,9 +6,14 @@
  * - Request count
  * - Nested requests
  * - Context menu (rename, delete, add request)
+ * 
+ * LAYOUT STABILITY:
+ * - Uses stable width for name container
+ * - Rename input overlays text without causing reflow
+ * - No flex-shrink jumps during rename
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
   ChevronRight, 
   ChevronDown, 
@@ -31,6 +36,7 @@ function CollectionItem({ collection, searchQuery = '' }) {
   const [renameValue, setRenameValue] = useState(collection.name);
   
   const inputRef = useRef(null);
+  const nameContainerRef = useRef(null);
   
   const { updateCollection, addRequest, setActiveCollection, activeCollectionId } = useCollectionsStore();
   const { createNewRequest } = useRequestsStore();
@@ -49,12 +55,22 @@ function CollectionItem({ collection, searchQuery = '' }) {
   // Auto-expand if search matches requests
   const shouldExpand = isExpanded || (searchQuery && filteredRequests?.length > 0);
   
+  // Sync rename value when collection name changes externally
+  useEffect(() => {
+    if (!isRenaming) {
+      setRenameValue(collection.name);
+    }
+  }, [collection.name, isRenaming]);
+  
   /**
    * Handle rename submit
    */
   const handleRename = async () => {
-    if (renameValue.trim() && renameValue !== collection.name) {
-      await updateCollection(collection.id, { name: renameValue.trim() });
+    const trimmedValue = renameValue.trim();
+    if (trimmedValue && trimmedValue !== collection.name) {
+      await updateCollection(collection.id, { name: trimmedValue });
+    } else {
+      setRenameValue(collection.name);
     }
     setIsRenaming(false);
   };
@@ -73,9 +89,13 @@ function CollectionItem({ collection, searchQuery = '' }) {
    * Start rename mode
    */
   const startRename = () => {
+    setRenameValue(collection.name);
     setIsRenaming(true);
     setIsMenuOpen(false);
-    setTimeout(() => inputRef.current?.focus(), 0);
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 0);
   };
   
   return (
@@ -93,7 +113,7 @@ function CollectionItem({ collection, searchQuery = '' }) {
         }}
       >
         {/* Expand Icon */}
-        <span className="text-text-muted">
+        <span className="text-text-muted flex-shrink-0">
           {shouldExpand ? (
             <ChevronDown size={16} />
           ) : (
@@ -102,7 +122,7 @@ function CollectionItem({ collection, searchQuery = '' }) {
         </span>
         
         {/* Folder Icon */}
-        <span className="text-accent-orange">
+        <span className="text-accent-orange flex-shrink-0">
           {shouldExpand ? (
             <FolderOpen size={16} />
           ) : (
@@ -110,37 +130,53 @@ function CollectionItem({ collection, searchQuery = '' }) {
           )}
         </span>
         
-        {/* Name / Rename Input */}
-        {isRenaming ? (
-          <input
-            ref={inputRef}
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onBlur={handleRename}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleRename();
-              if (e.key === 'Escape') {
-                setRenameValue(collection.name);
-                setIsRenaming(false);
-              }
-            }}
-            className="flex-1 bg-surface-3 border border-accent-orange rounded px-1.5 py-0.5
-                       text-sm text-text-primary focus:outline-none"
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span className="flex-1 text-sm font-medium text-text-primary truncate">
+        {/* Name Container - Fixed structure to prevent layout shift */}
+        <div 
+          ref={nameContainerRef}
+          className="flex-1 min-w-0 relative"
+        >
+          {/* Always render the text span to maintain layout */}
+          <span 
+            className={`
+              block text-sm font-medium text-text-primary truncate
+              ${isRenaming ? 'invisible' : 'visible'}
+            `}
+          >
             {collection.name}
           </span>
-        )}
+          
+          {/* Rename input overlays the text */}
+          {isRenaming && (
+            <input
+              ref={inputRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={handleRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleRename();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setRenameValue(collection.name);
+                  setIsRenaming(false);
+                }
+              }}
+              className="absolute inset-0 w-full bg-surface-3 border border-accent-orange 
+                         rounded px-1 text-sm text-text-primary focus:outline-none"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+        </div>
         
         {/* Request Count */}
-        <span className="text-xs text-text-muted">
+        <span className="text-xs text-text-muted flex-shrink-0 tabular-nums">
           {requestCount}
         </span>
         
         {/* Context Menu Button */}
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <button
             onClick={(e) => {
               e.stopPropagation();

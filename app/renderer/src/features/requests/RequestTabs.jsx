@@ -8,6 +8,14 @@
  * - Auth (Bearer, Basic, API Key)
  * 
  * OPTIMIZED: Uses local state and debounced updates to prevent lag
+ * 
+ * BODY STRUCTURE:
+ * body = {
+ *   activeType: "none" | "json" | "formdata" | "raw",
+ *   json: "...",
+ *   formdata: [...],
+ *   raw: "..."
+ * }
  */
 
 import { useState, useCallback, useRef, useEffect, memo, useMemo } from 'react';
@@ -19,6 +27,50 @@ import AuthEditor from './AuthEditor';
 
 // Debounce delay for parent updates
 const UPDATE_DELAY = 300;
+
+/**
+ * Default body structure
+ */
+const createDefaultBody = () => ({
+  activeType: 'none',
+  json: '{\n  \n}',
+  formdata: [],
+  raw: '',
+});
+
+/**
+ * Normalize body to ensure consistent structure
+ */
+function normalizeBody(body) {
+  if (!body) return createDefaultBody();
+  
+  // Legacy format: { type, content }
+  if ('type' in body && 'content' in body && !('activeType' in body)) {
+    const legacyType = body.type || 'none';
+    const legacyContent = body.content;
+    
+    const newBody = createDefaultBody();
+    newBody.activeType = legacyType;
+    
+    if (legacyType === 'json' && typeof legacyContent === 'string') {
+      newBody.json = legacyContent;
+    } else if (legacyType === 'formdata' && Array.isArray(legacyContent)) {
+      newBody.formdata = legacyContent;
+    } else if (legacyType === 'raw' && typeof legacyContent === 'string') {
+      newBody.raw = legacyContent;
+    }
+    
+    return newBody;
+  }
+  
+  // Ensure all keys exist
+  return {
+    activeType: body.activeType || 'none',
+    json: body.json ?? '{\n  \n}',
+    formdata: body.formdata ?? [],
+    raw: body.raw ?? '',
+  };
+}
 
 /**
  * Memoized Tab Label
@@ -45,7 +97,7 @@ function RequestTabs({ request, onUpdate }) {
   // Local state for immediate responsiveness
   const [localParams, setLocalParams] = useState(request.params || []);
   const [localHeaders, setLocalHeaders] = useState(request.headers || []);
-  const [localBody, setLocalBody] = useState(request.body || { type: 'none', content: '' });
+  const [localBody, setLocalBody] = useState(() => normalizeBody(request.body));
   const [localAuth, setLocalAuth] = useState(request.auth || { type: 'none', data: {} });
   
   // Refs for debounce timeouts
@@ -58,7 +110,7 @@ function RequestTabs({ request, onUpdate }) {
   useEffect(() => {
     setLocalParams(request.params || []);
     setLocalHeaders(request.headers || []);
-    setLocalBody(request.body || { type: 'none', content: '' });
+    setLocalBody(normalizeBody(request.body));
     setLocalAuth(request.auth || { type: 'none', data: {} });
   }, [request.id]); // Only when request ID changes
   
@@ -116,7 +168,15 @@ function RequestTabs({ request, onUpdate }) {
     [localHeaders]
   );
   
-  const hasBody = localBody?.type !== 'none' && localBody?.content;
+  // Check if body has content (using new structure)
+  const hasBody = useMemo(() => {
+    if (localBody.activeType === 'none') return false;
+    if (localBody.activeType === 'json') return localBody.json && localBody.json.trim() !== '{\n  \n}';
+    if (localBody.activeType === 'formdata') return localBody.formdata && localBody.formdata.length > 0;
+    if (localBody.activeType === 'raw') return localBody.raw && localBody.raw.trim() !== '';
+    return false;
+  }, [localBody]);
+  
   const hasAuth = localAuth?.type !== 'none';
   
   return (

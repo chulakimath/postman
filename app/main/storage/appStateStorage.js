@@ -8,11 +8,14 @@
  * - UI preferences (sidebar width, etc.)
  * 
  * This allows users to pick up exactly where they left off.
+ * 
+ * CRITICAL: Write operations are tracked to ensure completion before app quit.
  */
 
 const fs = require('fs').promises;
 const path = require('path');
 const { app } = require('electron');
+const { trackOperation } = require('../utils/pendingOperations');
 
 /**
  * Get the path to the state file
@@ -44,14 +47,27 @@ const ensureDir = async () => {
 };
 
 /**
+ * Atomic write helper
+ * @param {string} filePath - Target file path
+ * @param {Object} data - Data to write
+ */
+const atomicWrite = async (filePath, data) => {
+  const tempPath = `${filePath}.tmp`;
+  const content = JSON.stringify(data, null, 2);
+  
+  await fs.writeFile(tempPath, content, 'utf-8');
+  await fs.rename(tempPath, filePath);
+};
+
+/**
  * Save application state
+ * TRACKED: This operation is tracked to ensure completion before app quit
  * @param {Object} state - State to persist
  */
 const saveState = async (state) => {
   await ensureDir();
   
   const statePath = getStatePath();
-  const tempPath = `${statePath}.tmp`;
   
   // Add metadata
   const stateWithMeta = {
@@ -60,9 +76,10 @@ const saveState = async (state) => {
     version: 1, // For future migrations
   };
   
-  // Atomic write
-  await fs.writeFile(tempPath, JSON.stringify(stateWithMeta, null, 2), 'utf-8');
-  await fs.rename(tempPath, statePath);
+  // Track this write operation for shutdown handling
+  const writeOperation = atomicWrite(statePath, stateWithMeta);
+  trackOperation(writeOperation);
+  await writeOperation;
 };
 
 /**

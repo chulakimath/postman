@@ -6,8 +6,9 @@
  * - URL input field
  * - Send/Cancel button
  * 
- * NOTE: Parent (RequestEditor) manages local state for method and URL.
- * This component just renders and reports changes.
+ * NOTE: Parent (MainLayout) manages local state for method and URL.
+ * This component is purely presentational - it renders the current values
+ * and reports changes via callbacks.
  */
 
 import { useState, useCallback, memo } from 'react';

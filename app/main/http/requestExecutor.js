@@ -89,23 +89,37 @@ const buildAxiosConfig = (request) => {
   // Add body (only for methods that support it)
   const methodsWithBody = ['POST', 'PUT', 'PATCH', 'DELETE'];
   if (methodsWithBody.includes(config.method.toUpperCase()) && request.body) {
-    const { type, content } = request.body;
+    // Support both new format { activeType, json, formdata, raw }
+    // and legacy format { type, content }
+    let bodyType, bodyContent;
     
-    switch (type) {
+    if ('activeType' in request.body) {
+      // New format
+      bodyType = request.body.activeType;
+      if (bodyType === 'json') bodyContent = request.body.json;
+      else if (bodyType === 'formdata') bodyContent = request.body.formdata;
+      else if (bodyType === 'raw') bodyContent = request.body.raw;
+    } else {
+      // Legacy format
+      bodyType = request.body.type;
+      bodyContent = request.body.content;
+    }
+    
+    switch (bodyType) {
       case 'json':
         try {
-          config.data = JSON.parse(content || '{}');
+          config.data = JSON.parse(bodyContent || '{}');
           config.headers['Content-Type'] = 'application/json';
         } catch (e) {
-          config.data = content;
+          config.data = bodyContent;
           config.headers['Content-Type'] = 'application/json';
         }
         break;
         
       case 'formdata':
-        if (Array.isArray(content)) {
+        if (Array.isArray(bodyContent)) {
           const formData = new URLSearchParams();
-          content.forEach(item => {
+          bodyContent.forEach(item => {
             if (item.enabled !== false && item.key) {
               formData.append(item.key, item.value || '');
             }
@@ -116,7 +130,7 @@ const buildAxiosConfig = (request) => {
         break;
         
       case 'raw':
-        config.data = content;
+        config.data = bodyContent;
         break;
     }
   }

@@ -8,6 +8,12 @@
  *   - Center: Request Body Editor (Tabs)
  *   - Right: Response Viewer
  * 
+ * ARCHITECTURE:
+ * - Uses requestsStore drafts as single source of truth
+ * - Local state only for UI responsiveness (synced to draft)
+ * - Auto-save with debounce and race condition prevention
+ * - Method change NEVER resets other fields
+ * 
  * Uses react-resizable-panels for smooth resizing.
  */
 
@@ -25,7 +31,7 @@ import useRequestsStore from '../store/requestsStore';
 import useResponseStore from '../store/responseStore';
 
 // Debounce delay for autosave (ms)
-const AUTOSAVE_DELAY = 800;
+const AUTOSAVE_DELAY = 400;
 
 /**
  * Custom resize handle component
@@ -51,177 +57,250 @@ function MainLayout() {
     updateDraft, 
     clearDraft,
     openTabs,
-    updateTabInfo,
+    replaceRequestId,
+    setSaving,
+    isSaving,
+    incrementSaveVersion,
+    getSaveVersion,
+    markClean,
   } = useRequestsStore();
   const { executeRequest, isLoading } = useResponseStore();
   
-  // Get the base request (original from collection)
-  const baseRequest = useMemo(() => {
-    const collection = collections.find(c => c.id === activeCollectionId);
-    return collection?.requests?.find(r => r.id === activeRequestId) || null;
-  }, [activeRequestId, activeCollectionId, collections]);
-  
-  // Get draft if exists
-  const draft = useMemo(() => getDraft(activeRequestId), [activeRequestId, getDraft]);
-  
-  // Local state for method and URL for instant responsiveness
+  // Local state for instant UI responsiveness
+  // These sync FROM the draft, and changes are pushed TO the draft
   const [localMethod, setLocalMethod] = useState('GET');
   const [localUrl, setLocalUrl] = useState('');
   
-  // Refs for timeouts
+  // Refs for autosave
   const saveTimeoutRef = useRef(null);
-  const savedNewRequestRef = useRef(new Set());
+  const isMountedRef = useRef(true);
+  const lastSavedVersionRef = useRef({});
   
-  // Sync local state when request changes (switching tabs)
+  // Get draft (single source of truth for this request's state)
+  const currentDraft = useMemo(() => {
+    return getDraft(activeRequestId);
+  }, [activeRequestId, getDraft]);
+  
+  // Get tab info
+  const currentTab = useMemo(() => {
+    return openTabs.find(t => t.requestId === activeRequestId);
+  }, [openTabs, activeRequestId]);
+  
+  // Sync local state FROM draft when switching tabs or initial load
   useEffect(() => {
-    const request = draft || baseRequest;
-    if (request) {
-      setLocalMethod(request.method || 'GET');
-      setLocalUrl(request.url || '');
+    if (currentDraft) {
+      setLocalMethod(currentDraft.method || 'GET');
+      setLocalUrl(currentDraft.url || '');
+    } else if (currentTab) {
+      // No draft but tab exists - use tab defaults
+      setLocalMethod(currentTab.method || 'GET');
+      setLocalUrl('');
     } else {
+      // No tab selected
       setLocalMethod('GET');
       setLocalUrl('');
     }
-  }, [activeRequestId]);
+  }, [activeRequestId]); // Only re-sync when request changes, not on every draft update
   
-  // Get the full current request for display
+  // Build the current request object for display/send
   const currentRequest = useMemo(() => {
-    if (draft) return { ...draft, method: localMethod, url: localUrl };
-    if (baseRequest) return { ...baseRequest, method: localMethod, url: localUrl };
+    if (!currentDraft) return null;
+    
+    // Always use local state for method/url for instant responsiveness
+    return {
+      ...currentDraft,
+      method: localMethod,
+      url: localUrl,
+    };
+  }, [currentDraft, localMethod, localUrl]);
+  
+  /**
+   * Perform save with race condition prevention
+   */
+  const performSave = useCallback(async (requestId, collectionId, saveVersion) => {
+    if (!isMountedRef.current) return;
+    
+    // Check if this save is still valid (not superseded by newer save)
+    const currentVersion = getSaveVersion(requestId);
+    if (saveVersion !== currentVersion) {
+      return; // Newer save triggered, skip this one
+    }
+    
+    // Check if already saving this exact version
+    if (lastSavedVersionRef.current[requestId] === saveVersion) {
+      return;
+    }
+    
+    // Get the latest draft at save time
+    const draftToSave = useRequestsStore.getState().getDraft(requestId);
+    if (!draftToSave) return;
     
     // Check if it's a new request
-    const tab = openTabs.find(t => t.requestId === activeRequestId);
-    if (tab?.isNew) {
-      return {
-        id: activeRequestId,
-        name: 'New Request',
-        method: localMethod,
-        url: localUrl,
-        headers: [],
-        params: [],
-        body: { type: 'none', content: '' },
-        auth: { type: 'none', data: {} },
-        isNew: true,
-      };
-    }
-    
-    return null;
-  }, [activeRequestId, baseRequest, draft, localMethod, localUrl, openTabs]);
-  
-  /**
-   * Perform save immediately (no debounce)
-   */
-  const performSave = useCallback(async (requestId, collectionId) => {
-    const currentDraft = useRequestsStore.getState().getDraft(requestId);
-    if (!currentDraft) return;
-    
     const tab = useRequestsStore.getState().openTabs.find(t => t.requestId === requestId);
+    const isNew = tab?.isNew === true;
     
-    if (tab?.isNew && !savedNewRequestRef.current.has(requestId)) {
-      savedNewRequestRef.current.add(requestId);
-      
-      const { isNew, id, ...requestData } = currentDraft;
-      const savedRequest = await addRequest(collectionId, requestData);
-      
-      if (savedRequest) {
-        updateTabInfo(requestId, { 
-          requestId: savedRequest.id, 
-          isNew: false,
-          name: savedRequest.name,
-        });
-        clearDraft(requestId);
-        savedNewRequestRef.current.delete(requestId);
+    // Mark as saving
+    setSaving(requestId, true);
+    lastSavedVersionRef.current[requestId] = saveVersion;
+    
+    try {
+      if (isNew) {
+        // New request - create it
+        const { isNew: _, id: tempId, ...requestData } = draftToSave;
+        const savedRequest = await addRequest(collectionId, requestData);
+        
+        if (savedRequest && isMountedRef.current) {
+          // Replace the temporary ID with the real ID
+          replaceRequestId(requestId, savedRequest.id, {
+            name: savedRequest.name,
+          });
+          // Clear the old draft (new one was created with new ID)
+          clearDraft(requestId);
+          // Mark new request as clean
+          useRequestsStore.getState().markClean(savedRequest.id);
+        }
       } else {
-        savedNewRequestRef.current.delete(requestId);
+        // Existing request - update it
+        await updateRequest(collectionId, requestId, draftToSave);
+        // Mark as clean after successful save
+        if (isMountedRef.current) {
+          markClean(requestId);
+        }
       }
-    } else if (!tab?.isNew) {
-      await updateRequest(collectionId, requestId, currentDraft);
-      clearDraft(requestId);
+    } catch (error) {
+      console.error('Save failed:', error);
+      // Reset save tracking to allow retry
+      delete lastSavedVersionRef.current[requestId];
+    } finally {
+      if (isMountedRef.current) {
+        setSaving(requestId, false);
+      }
     }
-  }, [addRequest, updateRequest, clearDraft, updateTabInfo]);
+  }, [addRequest, updateRequest, clearDraft, replaceRequestId, setSaving, getSaveVersion, markClean]);
   
   /**
-   * Trigger autosave with current values
+   * Schedule autosave with debounce
+   * Uses version tracking to prevent race conditions
    */
-  const triggerAutosave = useCallback((updates = {}) => {
-    if (!activeRequestId || !activeCollectionId) return;
-    
-    updateDraft(activeRequestId, updates);
-    
+  const scheduleAutosave = useCallback((requestId, collectionId) => {
+    // Clear existing timeout
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
     
-    const reqId = activeRequestId;
-    const colId = activeCollectionId;
+    // Increment save version - this invalidates any pending saves
+    const saveVersion = incrementSaveVersion(requestId);
     
-    saveTimeoutRef.current = setTimeout(async () => {
-      await performSave(reqId, colId);
+    // Schedule new save
+    saveTimeoutRef.current = setTimeout(() => {
+      performSave(requestId, collectionId, saveVersion);
     }, AUTOSAVE_DELAY);
-  }, [activeRequestId, activeCollectionId, updateDraft, performSave]);
+  }, [incrementSaveVersion, performSave]);
   
   /**
-   * Handle method change
+   * Handle method change - update local state AND draft
+   * CRITICAL: Only updates method field, preserves everything else
    */
   const handleMethodChange = useCallback((method) => {
+    if (!activeRequestId || !activeCollectionId) return;
+    
+    // Update local state immediately for responsiveness
     setLocalMethod(method);
-    triggerAutosave({ method });
-  }, [triggerAutosave]);
+    
+    // Update draft (preserves all other fields)
+    updateDraft(activeRequestId, { method });
+    
+    // Schedule autosave
+    scheduleAutosave(activeRequestId, activeCollectionId);
+  }, [activeRequestId, activeCollectionId, updateDraft, scheduleAutosave]);
   
   /**
-   * Handle URL change
+   * Handle URL change - update local state AND draft
    */
   const handleUrlChange = useCallback((url) => {
+    if (!activeRequestId || !activeCollectionId) return;
+    
+    // Update local state immediately for responsiveness
     setLocalUrl(url);
-    triggerAutosave({ url });
-  }, [triggerAutosave]);
+    
+    // Update draft
+    updateDraft(activeRequestId, { url });
+    
+    // Schedule autosave
+    scheduleAutosave(activeRequestId, activeCollectionId);
+  }, [activeRequestId, activeCollectionId, updateDraft, scheduleAutosave]);
   
   /**
-   * Update other request fields
+   * Update other request fields (params, headers, body, auth)
    */
   const updateField = useCallback((field, value) => {
-    triggerAutosave({ [field]: value });
-  }, [triggerAutosave]);
+    if (!activeRequestId || !activeCollectionId) return;
+    
+    // Update draft
+    updateDraft(activeRequestId, { [field]: value });
+    
+    // Schedule autosave
+    scheduleAutosave(activeRequestId, activeCollectionId);
+  }, [activeRequestId, activeCollectionId, updateDraft, scheduleAutosave]);
   
   /**
    * Handle send request
    */
   const handleSend = useCallback(async () => {
-    if (!localUrl?.trim()) return;
+    if (!localUrl?.trim() || !currentRequest) return;
     
-    const requestToSend = {
-      ...currentRequest,
-      method: localMethod,
-      url: localUrl,
-    };
+    // Flush any pending autosave first
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+      
+      // Do an immediate save before sending
+      if (activeRequestId && activeCollectionId) {
+        const saveVersion = getSaveVersion(activeRequestId);
+        await performSave(activeRequestId, activeCollectionId, saveVersion);
+      }
+    }
     
-    await executeRequest(requestToSend);
-  }, [currentRequest, localMethod, localUrl, executeRequest]);
-  
-  // Track previous request ID for flushing saves
-  const prevRequestIdRef = useRef(activeRequestId);
+    // Execute the request with current state
+    await executeRequest(currentRequest);
+  }, [currentRequest, localUrl, activeRequestId, activeCollectionId, executeRequest, getSaveVersion, performSave]);
   
   // Flush pending saves when switching tabs
+  const prevRequestIdRef = useRef(activeRequestId);
+  const prevCollectionIdRef = useRef(activeCollectionId);
+  
   useEffect(() => {
     const prevReqId = prevRequestIdRef.current;
-    const prevColId = activeCollectionId;
+    const prevColId = prevCollectionIdRef.current;
     
+    // If switching to a different request, flush any pending save for the previous one
     if (prevReqId && prevReqId !== activeRequestId) {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = null;
       }
-      performSave(prevReqId, prevColId);
+      // Immediately save the previous request's draft
+      if (prevColId) {
+        const saveVersion = getSaveVersion(prevReqId);
+        performSave(prevReqId, prevColId, saveVersion);
+      }
     }
     
     prevRequestIdRef.current = activeRequestId;
+    prevCollectionIdRef.current = activeCollectionId;
+  }, [activeRequestId, activeCollectionId, getSaveVersion, performSave]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
     
     return () => {
+      isMountedRef.current = false;
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [activeRequestId, activeCollectionId, performSave]);
+  }, []);
   
   return (
     <div className="flex flex-col h-full">
@@ -317,4 +396,3 @@ function MainLayout() {
 }
 
 export default MainLayout;
-

@@ -95,6 +95,27 @@ contextBridge.exposeInMainWorld('api', {
   loadAppState: () => {
     return ipcRenderer.invoke('app:loadState');
   },
+
+  // ==========================================
+  // Persistence Management
+  // ==========================================
+  
+  /**
+   * Flush all pending write operations to disk
+   * Call this before app close to ensure data is saved
+   * @returns {Promise<Object>} { success: boolean, pendingCount: number }
+   */
+  flushPendingWrites: () => {
+    return ipcRenderer.invoke('app:flushPending');
+  },
+  
+  /**
+   * Check if there are pending write operations
+   * @returns {Promise<Object>} { hasPending: boolean, count: number }
+   */
+  checkPendingWrites: () => {
+    return ipcRenderer.invoke('app:checkPending');
+  },
 });
 
 // Log that preload script loaded successfully (dev only)

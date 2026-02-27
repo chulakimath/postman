@@ -5,23 +5,32 @@
  * Features:
  * - Shows method badge + request name
  * - Close button on each tab
- * - Indicates unsaved changes with dot
+ * - Unsaved indicator dot (shows when changes are pending)
+ * - Saving spinner (shows during save operation)
  * - Click to switch tabs
+ * 
+ * BEHAVIOR:
+ * - Dot appears when changes are made (dirty state)
+ * - Spinner appears when save is in progress
+ * - Dot disappears after successful save
+ * - Dot reappears if more changes are made
  */
 
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import useRequestsStore from '../store/requestsStore';
 import MethodBadge from '../shared/components/MethodBadge';
 
 function TabsBar() {
-  const { 
-    openTabs, 
-    activeRequestId, 
-    setActiveTab, 
+  const {
+    openTabs,
+    activeRequestId,
+    setActiveTab,
     closeTab,
     hasDraft,
+    isSaving,
+    getDraft,
   } = useRequestsStore();
-  
+
   // Don't render if no tabs
   if (openTabs.length === 0) {
     return (
@@ -32,13 +41,18 @@ function TabsBar() {
       </div>
     );
   }
-  
+
   return (
     <div className="h-10 bg-surface-2 border-b border-border flex items-center overflow-x-auto scrollbar-hide">
       {openTabs.map((tab) => {
+        const draft = getDraft(tab.requestId);
+        const tabName = draft?.name || 'Unknown Request';
+        const tabMethod = draft?.method || 'GET';
+
         const isActive = tab.requestId === activeRequestId;
-        const hasUnsaved = hasDraft(tab.requestId);
-        
+        const hasUnsavedChanges = hasDraft(tab.requestId);
+        const currentlySaving = isSaving(tab.requestId);
+
         return (
           <div
             key={tab.requestId}
@@ -46,28 +60,36 @@ function TabsBar() {
             className={`
               group flex items-center gap-2 px-4 h-full border-r border-border
               cursor-pointer transition-colors min-w-[140px] max-w-[200px]
-              ${isActive 
-                ? 'bg-surface-1 border-b-2 border-b-accent-orange' 
+              ${isActive
+                ? 'bg-surface-1 border-b-2 border-b-accent-orange'
                 : 'bg-surface-2 hover:bg-surface-3'
               }
             `}
           >
             {/* Method Badge */}
-            <MethodBadge method={tab.method} size="sm" />
-            
+            <MethodBadge method={tabMethod} size="sm" />
+
             {/* Request Name */}
             <span className={`
               flex-1 truncate text-sm
               ${isActive ? 'text-text-primary' : 'text-text-secondary'}
             `}>
-              {tab.name}
+              {tabName}
+              {tab.isNew && <span className="text-text-muted ml-1">(new)</span>}
             </span>
-            
-            {/* Unsaved Indicator */}
-            {hasUnsaved && (
-              <span className="w-2 h-2 rounded-full bg-accent-orange" />
-            )}
-            
+
+            {/* Status Indicator */}
+            {currentlySaving ? (
+              // Saving spinner
+              <Loader2 size={12} className="animate-spin text-accent-orange flex-shrink-0" />
+            ) : hasUnsavedChanges ? (
+              // Unsaved changes dot
+              <span
+                className="w-2 h-2 rounded-full bg-accent-orange flex-shrink-0"
+                title="Unsaved changes"
+              />
+            ) : null}
+
             {/* Close Button */}
             <button
               onClick={(e) => {
@@ -75,7 +97,7 @@ function TabsBar() {
                 closeTab(tab.requestId);
               }}
               className={`
-                p-0.5 rounded hover:bg-surface-4 transition-colors
+                p-0.5 rounded hover:bg-surface-4 transition-colors flex-shrink-0
                 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
               `}
             >

@@ -11,12 +11,15 @@
  * - Easy to backup/restore individual collections
  * - Better performance for large collections
  * - Future-ready for sync features
+ * 
+ * CRITICAL: All write operations are tracked to ensure completion before app quit.
  */
 
 const fs = require('fs').promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { app } = require('electron');
+const { trackOperation } = require('../utils/pendingOperations');
 
 /**
  * Get the storage directory path
@@ -56,6 +59,20 @@ const ensureStorageDir = async () => {
  */
 const getCollectionPath = (id) => {
   return path.join(getStorageDir(), `${id}.json`);
+};
+
+/**
+ * Atomic write helper
+ * Writes to temp file first, then renames for atomicity
+ * @param {string} filePath - Target file path
+ * @param {Object} data - Data to write
+ */
+const atomicWrite = async (filePath, data) => {
+  const tempPath = `${filePath}.tmp`;
+  const content = JSON.stringify(data, null, 2);
+  
+  await fs.writeFile(tempPath, content, 'utf-8');
+  await fs.rename(tempPath, filePath);
 };
 
 /**
@@ -129,10 +146,10 @@ const createCollection = async (data) => {
   
   const filePath = getCollectionPath(collection.id);
   
-  // Write atomically using temp file
-  const tempPath = `${filePath}.tmp`;
-  await fs.writeFile(tempPath, JSON.stringify(collection, null, 2), 'utf-8');
-  await fs.rename(tempPath, filePath);
+  // Track this write operation for shutdown handling
+  const writeOperation = atomicWrite(filePath, collection);
+  trackOperation(writeOperation);
+  await writeOperation;
   
   return collection;
 };
@@ -140,6 +157,8 @@ const createCollection = async (data) => {
 /**
  * Update an existing collection
  * Uses atomic write pattern for data safety
+ * TRACKED: This operation is tracked to ensure completion before app quit
+ * 
  * @param {string} id - Collection ID
  * @param {Object} data - Updated collection data
  * @returns {Promise<Object>} Updated collection
@@ -161,10 +180,13 @@ const updateCollection = async (id, data) => {
   
   const filePath = getCollectionPath(id);
   
-  // Atomic write: write to temp file, then rename
-  const tempPath = `${filePath}.tmp`;
-  await fs.writeFile(tempPath, JSON.stringify(updated, null, 2), 'utf-8');
-  await fs.rename(tempPath, filePath);
+  // Track this write operation for shutdown handling
+  // This is CRITICAL for ensuring renames persist before app close
+  const writeOperation = atomicWrite(filePath, updated);
+  trackOperation(writeOperation);
+  await writeOperation;
+  
+  console.log(`Collection ${id} saved to disk`);
   
   return updated;
 };
@@ -178,7 +200,10 @@ const deleteCollection = async (id) => {
   const filePath = getCollectionPath(id);
   
   try {
-    await fs.unlink(filePath);
+    // Track delete operation too
+    const deleteOperation = fs.unlink(filePath);
+    trackOperation(deleteOperation);
+    await deleteOperation;
   } catch (error) {
     if (error.code !== 'ENOENT') {
       throw error;

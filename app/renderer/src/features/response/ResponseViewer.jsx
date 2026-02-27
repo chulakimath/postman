@@ -6,6 +6,12 @@
  * - Response time and size
  * - Tabs for Body, Headers, Cookies
  * - Pretty JSON formatting
+ * 
+ * CRITICAL BEHAVIOR:
+ * - NEVER clears previous response automatically
+ * - Shows loading overlay OVER previous response
+ * - Only replaces response when new one arrives
+ * - Error displays separately, does not hide response
  */
 
 import { useState } from 'react';
@@ -13,46 +19,18 @@ import useResponseStore from '../../store/responseStore';
 import Tabs from '../../shared/components/Tabs';
 import ResponseStatus from './ResponseStatus';
 import JsonViewer from './JsonViewer';
-import { FileJson, FileText, Cookie, Clock, Scale, Download } from 'lucide-react';
+import { FileJson, FileText, Clock, Scale, AlertCircle } from 'lucide-react';
 
 function ResponseViewer() {
   const { getCurrentResponse, isLoading, error } = useResponseStore();
   const currentResponse = getCurrentResponse();
   const [activeTab, setActiveTab] = useState('body');
   
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-3 border-accent-orange border-t-transparent 
-                          rounded-full mx-auto mb-3" />
-          <p className="text-text-secondary text-sm">Sending request...</p>
-        </div>
-      </div>
-    );
-  }
+  // Determine what to show
+  const hasResponse = currentResponse !== null;
   
-  // Error state (network error, no response)
-  if (error && !currentResponse) {
-    return (
-      <div className="h-full flex items-center justify-center p-4">
-        <div className="text-center max-w-sm">
-          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-accent-red/10 
-                          flex items-center justify-center">
-            <span className="text-accent-red text-xl">!</span>
-          </div>
-          <h3 className="text-lg font-medium text-text-primary mb-2">
-            Request Failed
-          </h3>
-          <p className="text-text-muted text-sm">{error}</p>
-        </div>
-      </div>
-    );
-  }
-  
-  // Empty state
-  if (!currentResponse) {
+  // Empty state - no request has been sent yet
+  if (!hasResponse && !isLoading && !error) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
@@ -72,68 +50,109 @@ function ResponseViewer() {
   }
   
   // Format headers for display
-  const responseHeaders = currentResponse.headers 
+  const responseHeaders = currentResponse?.headers 
     ? Object.entries(currentResponse.headers).map(([key, value]) => ({ key, value }))
     : [];
   
   return (
-    <div className="flex flex-col h-full">
-      {/* Status Bar */}
-      <div className="flex-shrink-0 p-4 border-b border-border">
-        <div className="flex items-center justify-between">
-          <ResponseStatus 
-            status={currentResponse.status}
-            statusText={currentResponse.statusText}
-          />
-          
-          <div className="flex items-center gap-4 text-sm text-text-secondary">
-            {/* Response Time */}
-            <div className="flex items-center gap-1.5">
-              <Clock size={14} />
-              <span>{currentResponse.time || 0} ms</span>
-            </div>
-            
-            {/* Response Size */}
-            <div className="flex items-center gap-1.5">
-              <Scale size={14} />
-              <span>{formatBytes(currentResponse.size || 0)}</span>
-            </div>
+    <div className="flex flex-col h-full relative">
+      {/* Loading Overlay - shows OVER previous response, not replacing it */}
+      {isLoading && (
+        <div className="absolute inset-0 bg-surface-2/80 backdrop-blur-sm z-10 
+                        flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin w-8 h-8 border-3 border-accent-orange border-t-transparent 
+                            rounded-full mx-auto mb-3" />
+            <p className="text-text-secondary text-sm">Sending request...</p>
           </div>
         </div>
-      </div>
+      )}
       
-      {/* Tabs */}
-      <Tabs value={activeTab} onChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
-        <Tabs.List className="flex-shrink-0 px-4">
-          <Tabs.Trigger value="body">
-            <span className="flex items-center gap-1.5">
-              <FileJson size={14} />
-              Body
-            </span>
-          </Tabs.Trigger>
-          <Tabs.Trigger value="headers">
-            <span className="flex items-center gap-1.5">
-              <FileText size={14} />
-              Headers
-              {responseHeaders.length > 0 && (
-                <span className="px-1.5 py-0.5 text-2xs bg-surface-3 rounded-full">
-                  {responseHeaders.length}
-                </span>
-              )}
-            </span>
-          </Tabs.Trigger>
-        </Tabs.List>
-        
-        <div className="flex-1 overflow-auto p-4">
-          <Tabs.Content value="body">
-            <BodyTab data={currentResponse.data} />
-          </Tabs.Content>
-          
-          <Tabs.Content value="headers">
-            <HeadersTab headers={responseHeaders} />
-          </Tabs.Content>
+      {/* Error Banner - shows at top, does NOT replace response */}
+      {error && (
+        <div className="flex-shrink-0 px-4 py-3 bg-accent-red/10 border-b border-accent-red/20">
+          <div className="flex items-center gap-2 text-accent-red">
+            <AlertCircle size={16} />
+            <span className="text-sm font-medium">Error: {error}</span>
+          </div>
         </div>
-      </Tabs>
+      )}
+      
+      {/* Response Content - always shown if we have a response */}
+      {hasResponse ? (
+        <>
+          {/* Status Bar */}
+          <div className="flex-shrink-0 p-4 border-b border-border">
+            <div className="flex items-center justify-between">
+              <ResponseStatus 
+                status={currentResponse.status}
+                statusText={currentResponse.statusText}
+              />
+              
+              <div className="flex items-center gap-4 text-sm text-text-secondary">
+                {/* Response Time */}
+                <div className="flex items-center gap-1.5">
+                  <Clock size={14} />
+                  <span>{currentResponse.time || 0} ms</span>
+                </div>
+                
+                {/* Response Size */}
+                <div className="flex items-center gap-1.5">
+                  <Scale size={14} />
+                  <span>{formatBytes(currentResponse.size || 0)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Tabs */}
+          <Tabs value={activeTab} onChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
+            <Tabs.List className="flex-shrink-0 px-4">
+              <Tabs.Trigger value="body">
+                <span className="flex items-center gap-1.5">
+                  <FileJson size={14} />
+                  Body
+                </span>
+              </Tabs.Trigger>
+              <Tabs.Trigger value="headers">
+                <span className="flex items-center gap-1.5">
+                  <FileText size={14} />
+                  Headers
+                  {responseHeaders.length > 0 && (
+                    <span className="px-1.5 py-0.5 text-2xs bg-surface-3 rounded-full">
+                      {responseHeaders.length}
+                    </span>
+                  )}
+                </span>
+              </Tabs.Trigger>
+            </Tabs.List>
+            
+            <div className="flex-1 overflow-auto p-4">
+              <Tabs.Content value="body">
+                <BodyTab data={currentResponse.data} />
+              </Tabs.Content>
+              
+              <Tabs.Content value="headers">
+                <HeadersTab headers={responseHeaders} />
+              </Tabs.Content>
+            </div>
+          </Tabs>
+        </>
+      ) : (
+        /* Error-only state - no previous response to show */
+        <div className="h-full flex items-center justify-center p-4">
+          <div className="text-center max-w-sm">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-accent-red/10 
+                            flex items-center justify-center">
+              <AlertCircle size={20} className="text-accent-red" />
+            </div>
+            <h3 className="text-lg font-medium text-text-primary mb-2">
+              Request Failed
+            </h3>
+            <p className="text-text-muted text-sm">{error || 'Unknown error occurred'}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

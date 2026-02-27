@@ -7,8 +7,16 @@
  * - Form Data (key-value pairs)
  * - Raw (plain text)
  * 
- * NOTE: Local state is managed by parent (RequestTabs).
- * This component receives body as prop and calls onChange.
+ * BODY STATE STRUCTURE:
+ * body = {
+ *   activeType: "none" | "json" | "formdata" | "raw",
+ *   json: "...",
+ *   formdata: [...],
+ *   raw: "..."
+ * }
+ * 
+ * CRITICAL: Switching activeType does NOT delete other type data.
+ * Each type has independent storage.
  */
 
 import React, { useCallback, useRef, useEffect, memo, useState, lazy, Suspense } from 'react';
@@ -28,30 +36,67 @@ const BODY_TYPES = [
 // Debounce delay for Monaco content updates
 const CONTENT_UPDATE_DELAY = 200;
 
+/**
+ * Normalize body to new structure
+ * Handles both legacy and new formats
+ */
+function normalizeBody(body) {
+  if (!body) {
+    return {
+      activeType: 'none',
+      json: '{\n  \n}',
+      formdata: [],
+      raw: '',
+    };
+  }
+  
+  // Legacy format: { type, content }
+  if ('type' in body && 'content' in body && !('activeType' in body)) {
+    const legacyType = body.type || 'none';
+    const legacyContent = body.content;
+    
+    const newBody = {
+      activeType: legacyType,
+      json: '{\n  \n}',
+      formdata: [],
+      raw: '',
+    };
+    
+    if (legacyType === 'json' && typeof legacyContent === 'string') {
+      newBody.json = legacyContent;
+    } else if (legacyType === 'formdata' && Array.isArray(legacyContent)) {
+      newBody.formdata = legacyContent;
+    } else if (legacyType === 'raw' && typeof legacyContent === 'string') {
+      newBody.raw = legacyContent;
+    }
+    
+    return newBody;
+  }
+  
+  // New format - ensure all keys exist
+  return {
+    activeType: body.activeType || 'none',
+    json: body.json ?? '{\n  \n}',
+    formdata: body.formdata ?? [],
+    raw: body.raw ?? '',
+  };
+}
+
 function BodyEditor({ body, onChange, method }) {
-  const currentType = body?.type || 'none';
-  const currentContent = body?.content ?? '';
+  // Normalize body to ensure consistent structure
+  const normalizedBody = normalizeBody(body);
+  
+  const currentType = normalizedBody.activeType;
+  const jsonContent = normalizedBody.json;
+  const formdataContent = normalizedBody.formdata;
+  const rawContent = normalizedBody.raw;
   
   const contentTimeoutRef = useRef(null);
   const editorRef = useRef(null);
   
-  // Cache content per body type to preserve data when switching types
-  const cachedContentRef = useRef({
-    json: '{\n  \n}',
-    formdata: [],
-    raw: '',
-  });
-  
   // Methods that typically don't have a body
   const noBodyMethods = ['GET', 'HEAD', 'OPTIONS'];
   const showWarning = noBodyMethods.includes(method);
-  
-  // Keep cache updated with current content
-  useEffect(() => {
-    if (currentType !== 'none' && currentContent !== undefined) {
-      cachedContentRef.current[currentType] = currentContent;
-    }
-  }, [currentType, currentContent]);
   
   // Cleanup on unmount
   useEffect(() => {
@@ -61,85 +106,92 @@ function BodyEditor({ body, onChange, method }) {
   }, []);
   
   /**
-   * Handle type change - preserves content per type
+   * Handle type change - ONLY changes activeType, preserves all content
    */
-  const handleTypeChange = useCallback((type) => {
-    // Save current content to cache before switching
-    if (currentType !== 'none' && currentContent !== undefined) {
-      cachedContentRef.current[currentType] = currentContent;
-    }
-    
-    // Get cached content for the new type, or use defaults
-    let content;
-    if (type === 'none') {
-      content = '';
-    } else {
-      content = cachedContentRef.current[type];
-    }
-    
+  const handleTypeChange = useCallback((newType) => {
     // Clear any pending content updates
     if (contentTimeoutRef.current) {
       clearTimeout(contentTimeoutRef.current);
       contentTimeoutRef.current = null;
     }
     
-    // Update parent immediately for type changes
-    onChange({ type, content });
-  }, [currentType, currentContent, onChange]);
+    // Only update activeType - all content is preserved
+    onChange({
+      ...normalizedBody,
+      activeType: newType,
+    });
+  }, [normalizedBody, onChange]);
   
   /**
-   * Handle content change (for Monaco - needs debounce)
+   * Handle JSON content change (needs debounce)
    */
-  const handleMonacoChange = useCallback((content) => {
+  const handleJsonChange = useCallback((content) => {
     if (contentTimeoutRef.current) clearTimeout(contentTimeoutRef.current);
     contentTimeoutRef.current = setTimeout(() => {
-      onChange({ type: currentType, content });
+      onChange({
+        ...normalizedBody,
+        json: content,
+      });
     }, CONTENT_UPDATE_DELAY);
-  }, [currentType, onChange]);
+  }, [normalizedBody, onChange]);
   
   /**
-   * Handle content change (for FormData and Raw - immediate)
+   * Handle FormData content change (immediate)
    */
-  const handleContentChange = useCallback((content) => {
-    onChange({ type: currentType, content });
-  }, [currentType, onChange]);
+  const handleFormdataChange = useCallback((content) => {
+    onChange({
+      ...normalizedBody,
+      formdata: content,
+    });
+  }, [normalizedBody, onChange]);
+  
+  /**
+   * Handle Raw content change (debounced in child component)
+   */
+  const handleRawChange = useCallback((content) => {
+    onChange({
+      ...normalizedBody,
+      raw: content,
+    });
+  }, [normalizedBody, onChange]);
   
   /**
    * Beautify/Format JSON
    */
   const handleBeautify = useCallback(() => {
     try {
-      const content = typeof currentContent === 'string' ? currentContent : '';
-      if (!content.trim()) return;
+      if (!jsonContent?.trim()) return;
       
-      // Parse and re-stringify with formatting
-      const parsed = JSON.parse(content);
+      const parsed = JSON.parse(jsonContent);
       const beautified = JSON.stringify(parsed, null, 2);
       
-      // Update immediately
-      onChange({ type: currentType, content: beautified });
+      onChange({
+        ...normalizedBody,
+        json: beautified,
+      });
     } catch (e) {
-      // Invalid JSON - can't beautify
       console.warn('Cannot beautify invalid JSON:', e.message);
     }
-  }, [currentContent, currentType, onChange]);
+  }, [jsonContent, normalizedBody, onChange]);
   
   /**
    * Minify JSON (compress)
    */
   const handleMinify = useCallback(() => {
     try {
-      const content = typeof currentContent === 'string' ? currentContent : '';
-      if (!content.trim()) return;
+      if (!jsonContent?.trim()) return;
       
-      const parsed = JSON.parse(content);
+      const parsed = JSON.parse(jsonContent);
       const minified = JSON.stringify(parsed);
       
-      onChange({ type: currentType, content: minified });
+      onChange({
+        ...normalizedBody,
+        json: minified,
+      });
     } catch (e) {
       console.warn('Cannot minify invalid JSON:', e.message);
     }
-  }, [currentContent, currentType, onChange]);
+  }, [jsonContent, normalizedBody, onChange]);
   
   /**
    * Handle editor mount - store reference
@@ -200,8 +252,8 @@ function BodyEditor({ body, onChange, method }) {
                 <MonacoEditor
                   height="300px"
                   language="json"
-                  value={typeof currentContent === 'string' ? currentContent : '{\n  \n}'}
-                  onChange={handleMonacoChange}
+                  value={jsonContent}
+                  onChange={handleJsonChange}
                   onMount={handleEditorMount}
                   theme="vs-dark"
                   options={{
@@ -249,8 +301,8 @@ function BodyEditor({ body, onChange, method }) {
         
         {currentType === 'formdata' && (
           <KeyValueEditor
-            items={Array.isArray(currentContent) ? currentContent : []}
-            onChange={handleContentChange}
+            items={formdataContent}
+            onChange={handleFormdataChange}
             keyPlaceholder="Field name"
             valuePlaceholder="Field value"
           />
@@ -258,8 +310,8 @@ function BodyEditor({ body, onChange, method }) {
         
         {currentType === 'raw' && (
           <RawTextArea
-            value={typeof currentContent === 'string' ? currentContent : ''}
-            onChange={handleContentChange}
+            value={rawContent}
+            onChange={handleRawChange}
           />
         )}
       </div>

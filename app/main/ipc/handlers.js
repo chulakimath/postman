@@ -15,6 +15,7 @@
 const collectionStorage = require('../storage/collectionStorage');
 const requestExecutor = require('../http/requestExecutor');
 const appStateStorage = require('../storage/appStateStorage');
+const { waitForPending, hasPending, getPendingCount } = require('../utils/pendingOperations');
 
 /**
  * Register all IPC handlers
@@ -138,6 +139,42 @@ const registerHandlers = (ipcMain) => {
       console.error('Error loading app state:', error);
       return { success: false, error: error.message };
     }
+  });
+
+  // ==========================================
+  // Persistence Management Handlers
+  // ==========================================
+  
+  /**
+   * Flush all pending write operations
+   * Call this before allowing app to close to ensure data is saved
+   * @returns {Promise<Object>} { success: boolean, pendingCount: number }
+   */
+  ipcMain.handle('app:flushPending', async () => {
+    try {
+      const pendingCount = getPendingCount();
+      
+      if (pendingCount > 0) {
+        console.log(`Flushing ${pendingCount} pending operations...`);
+        await waitForPending(10000);
+      }
+      
+      return { success: true, pendingCount };
+    } catch (error) {
+      console.error('Error flushing pending operations:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  
+  /**
+   * Check if there are pending write operations
+   * @returns {Promise<Object>} { hasPending: boolean, count: number }
+   */
+  ipcMain.handle('app:checkPending', async () => {
+    return {
+      hasPending: hasPending(),
+      count: getPendingCount(),
+    };
   });
 };
 

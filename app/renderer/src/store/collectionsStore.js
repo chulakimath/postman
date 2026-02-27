@@ -154,6 +154,14 @@ const useCollectionsStore = create((set, get) => ({
     const collection = get().collections.find(c => c.id === collectionId);
     if (!collection) return null;
     
+    // Default body structure with independent storage per type
+    const defaultBody = {
+      activeType: 'none',
+      json: '{\n  \n}',
+      formdata: [],
+      raw: '',
+    };
+    
     const newRequest = {
       id: crypto.randomUUID(),
       name: request.name || 'New Request',
@@ -161,7 +169,7 @@ const useCollectionsStore = create((set, get) => ({
       url: request.url || '',
       headers: request.headers || [],
       params: request.params || [],
-      body: request.body || { type: 'none', content: '' },
+      body: request.body || defaultBody,
       auth: request.auth || { type: 'none', data: {} },
       createdAt: Date.now(),
       updatedAt: Date.now(),
