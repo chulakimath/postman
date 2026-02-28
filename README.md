@@ -31,4 +31,6 @@ npm run build
 ![alt text](prod/Rename_request.png)
 ### Response
 ![alt text](prod/Response.png)
+### Search Collection
+![alt text](prod/Search_collection.png)
 
