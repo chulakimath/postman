@@ -40,8 +40,8 @@ const createWindow = () => {
 
     // Window appearance
     backgroundColor: '#1a1a1a', // Dark background to prevent flash
-    title: 'Postman Desktop',
-    icon: path.join(__dirname, '..', '..', 'assets', 'postman.ico'),
+    title: 'Quark Desktop',
+    icon: path.join(__dirname, '..', '..', 'assets', 'quark.ico'),
 
 
     // Security settings (VERY IMPORTANT)

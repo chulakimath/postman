@@ -10,7 +10,7 @@ export default {
   
   theme: {
     extend: {
-      // Custom color palette inspired by Postman
+  
       colors: {
         // Surface colors for backgrounds
         surface: {
@@ -28,7 +28,7 @@ export default {
         
         // Accent colors
         accent: {
-          orange: '#ff6c37',     // Postman's signature orange
+          orange: '#ff6c37',     
           'orange-hover': '#ff8250',
           green: '#22c55e',      // Success
           red: '#ef4444',        // Error

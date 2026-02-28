@@ -1,5 +1,5 @@
 {
-  "name": "postman-desktop",
+  "name": "quark-desktop",
   "version": "1.1.0",
   "description": "Professional API Testing Desktop Application",
   "main": "app/main/index.js",
@@ -23,25 +23,27 @@
   "keywords": [
     "api",
     "testing",
-    "postman",
-    "electron"
+    "quark",
+    "electron",
+    "rest-client",
+    "desktop-app"
   ],
   "author": "",
   "license": "MIT",
   "build": {
-    "appId": "com.postmandesktop.app",
-    "productName": "Postman Desktop",
+    "appId": "com.quarkdesktop.app",
+    "productName": "Quark Desktop",
     "directories": {
       "output": "dist"
     },
     "mac": {
-      "icon": "app/assets/postman.png"
+      "icon": "app/assets/quark.png"
     },
     "win": {
-      "icon": "app/assets/postman.ico"
+      "icon": "app/assets/quark.ico"
     },
     "linux": {
-      "icon": "app/assets/postman.png"
+      "icon": "app/assets/quark.png"
     }
   }
 }
