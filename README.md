@@ -32,5 +32,5 @@ npm run build
 ### Response
 ![alt text](prod/Response.png)
 ### Search Collection
-![alt text](prod/Search_collection.png)
+![alt text](prod/Search_requests_collections.png)
 
