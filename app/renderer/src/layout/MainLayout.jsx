@@ -243,11 +243,8 @@ function MainLayout() {
     scheduleAutosave(activeRequestId, activeCollectionId);
   }, [activeRequestId, activeCollectionId, updateDraft, scheduleAutosave]);
   
-  /**
-   * Handle send request
-   */
   const handleSend = useCallback(async () => {
-    if (!localUrl?.trim() || !currentRequest) return;
+    if (!localUrl?.trim() || !activeRequestId) return;
     
     // Flush any pending autosave first
     if (saveTimeoutRef.current) {
@@ -261,9 +258,21 @@ function MainLayout() {
       }
     }
     
+    // Get the absolute latest draft from the store right before sending
+    // This fixes the stale state bug where currentDraft was cached
+    const latestDraft = useRequestsStore.getState().getDraft(activeRequestId);
+    if (!latestDraft) return;
+    
+    // Build the request object to execute
+    const executePayload = {
+      ...latestDraft,
+      method: localMethod,
+      url: localUrl,
+    };
+    
     // Execute the request with current state
-    await executeRequest(currentRequest);
-  }, [currentRequest, localUrl, activeRequestId, activeCollectionId, executeRequest, getSaveVersion, performSave]);
+    await executeRequest(executePayload);
+  }, [localUrl, localMethod, activeRequestId, activeCollectionId, executeRequest, getSaveVersion, performSave]);
   
   // Flush pending saves when switching tabs
   const prevRequestIdRef = useRef(activeRequestId);
