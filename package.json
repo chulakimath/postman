@@ -1,5 +1,5 @@
 {
-  "name": "quark-desktop",
+  "name": "testly-desktop",
   "version": "1.1.0",
   "description": "Professional API Testing Desktop Application",
   "main": "app/main/index.js",
@@ -23,7 +23,7 @@
   "keywords": [
     "api",
     "testing",
-    "quark",
+    "Testly",
     "electron",
     "rest-client",
     "desktop-app"
@@ -31,19 +31,19 @@
   "author": "",
   "license": "MIT",
   "build": {
-    "appId": "com.quarkdesktop.app",
-    "productName": "Quark Desktop",
+    "appId": "com.testlydesktop.app",
+    "productName": "Testly Desktop",
     "directories": {
       "output": "dist"
     },
     "mac": {
-      "icon": "app/assets/quark.png"
+      "icon": "app/assets/testly.png"
     },
     "win": {
-      "icon": "app/assets/quark.ico"
+      "icon": "app/assets/testly.ico"
     },
     "linux": {
-      "icon": "app/assets/quark.png"
+      "icon": "app/assets/testly.png"
     }
   }
 }

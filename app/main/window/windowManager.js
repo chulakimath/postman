@@ -40,8 +40,8 @@ const createWindow = () => {
 
     // Window appearance
     backgroundColor: '#1a1a1a', // Dark background to prevent flash
-    title: 'Quark Desktop',
-    icon: path.join(__dirname, '..', '..', 'assets', 'quark.ico'),
+    title: 'Testly Desktop',
+    icon: path.join(__dirname, '..', '..', 'assets', 'testly.ico'),
 
 
     // Security settings (VERY IMPORTANT)
