@@ -18,6 +18,17 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
+// Disable GPU Hardware Acceleration & Software Rasterization to prevent crashes on integrated/faulty laptop GPU drivers
+app.disableHardwareAcceleration();
+
+// Apply Chromium stability switches for maximum compatibility
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('disable-gpu-compositing');
+app.commandLine.appendSwitch('disable-gpu-rasterization');
+app.commandLine.appendSwitch('disable-gpu-sandbox');
+app.commandLine.appendSwitch('no-sandbox');
+
 // Import our modular components
 const { createWindow, getMainWindow } = require('./window/windowManager');
 const { registerHandlers } = require('./ipc/handlers');
