@@ -49,19 +49,19 @@ function normalizeBody(body) {
       raw: '',
     };
   }
-  
+
   // Legacy format: { type, content }
   if ('type' in body && 'content' in body && !('activeType' in body)) {
     const legacyType = body.type || 'none';
     const legacyContent = body.content;
-    
+
     const newBody = {
       activeType: legacyType,
       json: '{\n  \n}',
       formdata: [],
       raw: '',
     };
-    
+
     if (legacyType === 'json' && typeof legacyContent === 'string') {
       newBody.json = legacyContent;
     } else if (legacyType === 'formdata' && Array.isArray(legacyContent)) {
@@ -69,10 +69,10 @@ function normalizeBody(body) {
     } else if (legacyType === 'raw' && typeof legacyContent === 'string') {
       newBody.raw = legacyContent;
     }
-    
+
     return newBody;
   }
-  
+
   // New format - ensure all keys exist
   return {
     activeType: body.activeType || 'none',
@@ -85,26 +85,26 @@ function normalizeBody(body) {
 function BodyEditor({ body, onChange, method }) {
   // Normalize body to ensure consistent structure
   const normalizedBody = normalizeBody(body);
-  
+
   const currentType = normalizedBody.activeType;
   const jsonContent = normalizedBody.json;
   const formdataContent = normalizedBody.formdata;
   const rawContent = normalizedBody.raw;
-  
+
   const contentTimeoutRef = useRef(null);
   const editorRef = useRef(null);
-  
+
   // Methods that typically don't have a body
   const noBodyMethods = ['GET', 'HEAD', 'OPTIONS'];
   const showWarning = noBodyMethods.includes(method);
-  
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (contentTimeoutRef.current) clearTimeout(contentTimeoutRef.current);
     };
   }, []);
-  
+
   /**
    * Handle type change - ONLY changes activeType, preserves all content
    */
@@ -114,14 +114,14 @@ function BodyEditor({ body, onChange, method }) {
       clearTimeout(contentTimeoutRef.current);
       contentTimeoutRef.current = null;
     }
-    
+
     // Only update activeType - all content is preserved
     onChange({
       ...normalizedBody,
       activeType: newType,
     });
   }, [normalizedBody, onChange]);
-  
+
   /**
    * Handle JSON content change (needs debounce)
    */
@@ -134,7 +134,7 @@ function BodyEditor({ body, onChange, method }) {
       });
     }, CONTENT_UPDATE_DELAY);
   }, [normalizedBody, onChange]);
-  
+
   /**
    * Handle FormData content change (immediate)
    */
@@ -144,7 +144,7 @@ function BodyEditor({ body, onChange, method }) {
       formdata: content,
     });
   }, [normalizedBody, onChange]);
-  
+
   /**
    * Handle Raw content change (debounced in child component)
    */
@@ -154,17 +154,17 @@ function BodyEditor({ body, onChange, method }) {
       raw: content,
     });
   }, [normalizedBody, onChange]);
-  
+
   /**
    * Beautify/Format JSON
    */
   const handleBeautify = useCallback(() => {
     try {
       if (!jsonContent?.trim()) return;
-      
+
       const parsed = JSON.parse(jsonContent);
       const beautified = JSON.stringify(parsed, null, 2);
-      
+
       onChange({
         ...normalizedBody,
         json: beautified,
@@ -173,17 +173,17 @@ function BodyEditor({ body, onChange, method }) {
       console.warn('Cannot beautify invalid JSON:', e.message);
     }
   }, [jsonContent, normalizedBody, onChange]);
-  
+
   /**
    * Minify JSON (compress)
    */
   const handleMinify = useCallback(() => {
     try {
       if (!jsonContent?.trim()) return;
-      
+
       const parsed = JSON.parse(jsonContent);
       const minified = JSON.stringify(parsed);
-      
+
       onChange({
         ...normalizedBody,
         json: minified,
@@ -192,14 +192,14 @@ function BodyEditor({ body, onChange, method }) {
       console.warn('Cannot minify invalid JSON:', e.message);
     }
   }, [jsonContent, normalizedBody, onChange]);
-  
+
   /**
    * Handle editor mount - store reference
    */
   const handleEditorMount = useCallback((editor) => {
     editorRef.current = editor;
   }, []);
-  
+
   return (
     <div className="flex flex-col h-full space-y-3">
       {/* Warning for GET/HEAD/OPTIONS */}
@@ -209,65 +209,62 @@ function BodyEditor({ body, onChange, method }) {
           {method} requests typically don't include a body. Consider using POST, PUT, or PATCH.
         </div>
       )}
-      
-      {/* Top Toolbar: Type Selector & Action Buttons */}
-      <div className="flex items-center justify-between gap-2 flex-shrink-0">
-        {/* Type Selector */}
-        <div className="flex items-center gap-1 p-1 bg-surface-3 rounded-lg w-fit">
-          {BODY_TYPES.map((type) => {
-            const Icon = type.icon;
-            const isActive = currentType === type.value;
-            
-            return (
-              <button
-                key={type.value}
-                type="button"
-                onClick={() => handleTypeChange(type.value)}
-                className={`
-                  flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
-                  transition-colors
-                  ${isActive 
-                    ? 'bg-surface-1 text-text-primary shadow-sm' 
-                    : 'text-text-secondary hover:text-text-primary'
-                  }
-                `}
-              >
-                <Icon size={14} />
-                {type.label}
-              </button>
-            );
-          })}
-        </div>
 
-        {/* Top Action Buttons for JSON */}
-        {currentType === 'json' && (
-          <div className="flex items-center gap-2">
+      {/* Type Selector Bar */}
+      <div className="flex items-center gap-1 p-1 bg-surface-3 rounded-lg w-fit flex-shrink-0">
+        {BODY_TYPES.map((type) => {
+          const Icon = type.icon;
+          const isActive = currentType === type.value;
+
+          return (
             <button
+              key={type.value}
               type="button"
-              onClick={handleBeautify}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
-                         bg-surface-3 hover:bg-surface-4 text-text-secondary hover:text-accent-orange
-                         rounded-md transition-colors border border-border shadow-sm"
-              title="Format JSON (Beautify)"
+              onClick={() => handleTypeChange(type.value)}
+              className={`
+                flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
+                transition-colors
+                ${isActive
+                  ? 'bg-surface-1 text-text-primary shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary'
+                }
+              `}
             >
-              <Wand2 size={13} />
-              Beautify
+              <Icon size={14} />
+              {type.label}
             </button>
-            <button
-              type="button"
-              onClick={handleMinify}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
-                         bg-surface-3 hover:bg-surface-4 text-text-secondary hover:text-accent-orange
-                         rounded-md transition-colors border border-border shadow-sm"
-              title="Compress JSON (Minify)"
-            >
-              <Minimize2 size={13} />
-              Minify
-            </button>
-          </div>
-        )}
+          );
+        })}
       </div>
-      
+
+      {/* Action Buttons for JSON (Placed below the body type selector bar) */}
+      {currentType === 'json' && (
+        <div className="flex items-center justify-start gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={handleBeautify}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                       bg-surface-3 hover:bg-surface-4 text-text-secondary hover:text-accent-orange
+                       rounded-md transition-colors border border-border shadow-sm"
+            title="Format JSON (Beautify)"
+          >
+            <Wand2 size={13} />
+            Beautify
+          </button>
+          <button
+            type="button"
+            onClick={handleMinify}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                       bg-surface-3 hover:bg-surface-4 text-text-secondary hover:text-accent-orange
+                       rounded-md transition-colors border border-border shadow-sm"
+            title="Compress JSON (Minify)"
+          >
+            <Minimize2 size={13} />
+            Minify
+          </button>
+        </div>
+      )}
+
       {/* Content Editor Area */}
       <div className="flex-1 min-h-[300px] h-full flex flex-col overflow-hidden">
         {currentType === 'none' && (
@@ -275,7 +272,7 @@ function BodyEditor({ body, onChange, method }) {
             This request does not have a body
           </div>
         )}
-        
+
         {currentType === 'json' && (
           <Suspense fallback={<EditorLoading />}>
             <div className="flex-1 h-full border border-border rounded-md overflow-hidden min-h-[300px]">
@@ -302,7 +299,7 @@ function BodyEditor({ body, onChange, method }) {
             </div>
           </Suspense>
         )}
-        
+
         {currentType === 'formdata' && (
           <div className="flex-1 overflow-auto">
             <KeyValueEditor
@@ -313,7 +310,7 @@ function BodyEditor({ body, onChange, method }) {
             />
           </div>
         )}
-        
+
         {currentType === 'raw' && (
           <RawTextArea
             value={rawContent}
@@ -331,28 +328,28 @@ function BodyEditor({ body, onChange, method }) {
 const RawTextArea = memo(function RawTextArea({ value, onChange }) {
   const [localValue, setLocalValue] = useState(value);
   const timeoutRef = useRef(null);
-  
+
   // Sync when value changes externally
   useEffect(() => {
     setLocalValue(value);
   }, [value]);
-  
+
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
-  
+
   const handleChange = (e) => {
     const newValue = e.target.value;
     setLocalValue(newValue);
-    
+
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
       onChange(newValue);
     }, 150);
   };
-  
+
   return (
     <textarea
       value={localValue}
