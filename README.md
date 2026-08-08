@@ -1,6 +1,6 @@
 # Testly REST API Client
 
-# Testly — Fast, Private & Free Postman Alternative
+# Testly - Fast, Private & Free Postman Alternative
 
 Testly is a fast, privacy-first API client and Postman alternative
 that runs entirely on your local machine.
