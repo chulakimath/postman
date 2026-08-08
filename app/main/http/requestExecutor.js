@@ -178,6 +178,50 @@ const applyAuth = (config, auth) => {
 };
 
 /**
+ * Helper to replace {{variableName}} in string template
+ */
+const replaceVars = (str, envVarsMap) => {
+  if (typeof str !== 'string' || !str.includes('{{')) return str;
+  return str.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+    const trimmed = varName.trim();
+    return envVarsMap.has(trimmed) ? envVarsMap.get(trimmed) : match;
+  });
+};
+
+/**
+ * Recursively interpolate variables in strings, objects, and arrays
+ */
+const interpolateData = (data, envVarsMap) => {
+  if (!data || envVarsMap.size === 0) return data;
+  if (typeof data === 'string') return replaceVars(data, envVarsMap);
+  if (Array.isArray(data)) {
+    return data.map(item => interpolateData(item, envVarsMap));
+  }
+  if (typeof data === 'object') {
+    const result = {};
+    for (const key of Object.keys(data)) {
+      const interpolatedKey = replaceVars(key, envVarsMap);
+      result[interpolatedKey] = interpolateData(data[key], envVarsMap);
+    }
+    return result;
+  }
+  return data;
+};
+
+/**
+ * Safely convert AxiosHeaders or response headers into a plain JS object
+ * Prevents IPC structured clone DataCloneError in Electron
+ */
+const sanitizeHeaders = (headers) => {
+  if (!headers) return {};
+  try {
+    return JSON.parse(JSON.stringify(headers));
+  } catch (e) {
+    return Object.assign({}, headers);
+  }
+};
+
+/**
  * Execute with retry logic
  */
 const executeWithRetry = async (request, retryCount = 0) => {
@@ -186,14 +230,36 @@ const executeWithRetry = async (request, retryCount = 0) => {
   if (!request.url) {
     throw new Error('URL is required');
   }
+
+  // Build Environment Variables Map
+  const envVarsMap = new Map();
+  if (Array.isArray(request.environmentVariables)) {
+    request.environmentVariables.forEach(v => {
+      if (v.enabled !== false && v.key) {
+        envVarsMap.set(v.key.trim(), v.value !== undefined ? v.value : '');
+      }
+    });
+  }
+
+  // Interpolate request object FIRST
+  const interpolatedRequest = envVarsMap.size > 0 ? interpolateData(request, envVarsMap) : request;
   
+  // Clean and sanitize URL AFTER variable interpolation
+  let url = (interpolatedRequest.url || '').trim();
+
+  // Fix duplicate protocols (e.g. https://https://example.com -> https://example.com)
+  url = url.replace(/^https?:\/\/(https?:\/\/)/i, '$1');
+
   // Ensure URL has protocol
-  let url = request.url;
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = `https://${url}`;
+    if (url.startsWith('localhost') || url.startsWith('127.0.0.1')) {
+      url = `http://${url}`;
+    } else {
+      url = `https://${url}`;
+    }
   }
   
-  const requestWithUrl = { ...request, url };
+  const requestWithUrl = { ...interpolatedRequest, url };
   const config = buildAxiosConfig(requestWithUrl);
   const startTime = Date.now();
   
@@ -201,10 +267,11 @@ const executeWithRetry = async (request, retryCount = 0) => {
     const response = await axios(config);
     const duration = Date.now() - startTime;
     
+    const plainHeaders = sanitizeHeaders(response.headers);
     return {
       status: response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers: plainHeaders,
       data: response.data,
       time: duration,
       size: calculateSize(response.data),
@@ -246,7 +313,7 @@ const executeWithRetry = async (request, retryCount = 0) => {
     return {
       status: error.response.status,
       statusText: error.response.statusText,
-      headers: error.response.headers,
+      headers: sanitizeHeaders(error.response.headers),
       data: error.response.data,
       time: duration,
       size: calculateSize(error.response.data),

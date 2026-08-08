@@ -16,14 +16,17 @@ import {
   ChevronRight,
   MoreHorizontal,
   Plus,
+  Upload,
 } from 'lucide-react';
 import useCollectionsStore from '../../store/collectionsStore';
 import useUIStore from '../../store/uiStore';
 import CollectionItem from './CollectionItem';
 import Input from '../../shared/components/Input';
+import ImportModal from '../import/ImportModal';
 
 function CollectionsSidebar() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [isImportOpen, setIsImportOpen] = useState(false);
   
   const { collections, isLoading } = useCollectionsStore();
   const { openCreateCollectionModal } = useUIStore();
@@ -36,20 +39,49 @@ function CollectionsSidebar() {
     )
   );
   
+  const [menuState, setMenuState] = useState({ isOpen: false, x: 0, y: 0 });
+
+  const handleSidebarContextMenu = (e) => {
+    // Only handle context menu if clicking directly on container background, not on children with their own context menu
+    if (e.target === e.currentTarget || e.target.classList.contains('sidebar-bg')) {
+      e.preventDefault();
+      const menuWidth = 180;
+      const menuHeight = 100;
+      const x = Math.min(e.clientX, window.innerWidth - menuWidth - 10);
+      const y = Math.min(e.clientY, window.innerHeight - menuHeight - 10);
+
+      setMenuState({
+        isOpen: true,
+        x: Math.max(10, x),
+        y: Math.max(10, y),
+      });
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full select-none">
       {/* Header */}
       <div className="flex-shrink-0 p-3 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-text-primary">Collections</h2>
-          <button
-            onClick={openCreateCollectionModal}
-            className="p-1.5 rounded-md text-text-secondary hover:text-text-primary 
-                       hover:bg-surface-3 transition-colors"
-            title="New Collection"
-          >
-            <FolderPlus size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsImportOpen(true)}
+              className="p-1.5 rounded-md text-text-secondary hover:text-accent-orange 
+                         hover:bg-surface-3 transition-colors"
+              title="Import Collection or Environment (Postman / Testly JSON)"
+            >
+              <Upload size={16} />
+            </button>
+            <button
+              onClick={openCreateCollectionModal}
+              className="p-1.5 rounded-md text-text-secondary hover:text-text-primary 
+                         hover:bg-surface-3 transition-colors"
+              title="New Collection"
+            >
+              <FolderPlus size={18} />
+            </button>
+          </div>
         </div>
         
         {/* Search */}
@@ -63,7 +95,10 @@ function CollectionsSidebar() {
       </div>
       
       {/* Collections List */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div 
+        className="flex-1 overflow-y-auto py-2 sidebar-bg"
+        onContextMenu={handleSidebarContextMenu}
+      >
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin w-5 h-5 border-2 border-accent-orange border-t-transparent rounded-full" />
@@ -85,6 +120,38 @@ function CollectionsSidebar() {
           </div>
         )}
       </div>
+
+      {/* Blank Space Context Menu */}
+      {menuState.isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[100]"
+            onClick={() => setMenuState({ isOpen: false, x: 0, y: 0 })}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenuState({ isOpen: false, x: 0, y: 0 });
+            }}
+          />
+          <div
+            className="fixed z-[101] w-48 py-1.5 bg-surface-3 border border-border rounded-lg shadow-2xl animate-fade-in text-sm"
+            style={{
+              top: `${menuState.y}px`,
+              left: `${menuState.x}px`,
+            }}
+          >
+            <button
+              onClick={() => {
+                setMenuState({ isOpen: false, x: 0, y: 0 });
+                openCreateCollectionModal();
+              }}
+              className="w-full px-3 py-1.5 text-left text-text-secondary hover:bg-surface-4 hover:text-text-primary flex items-center gap-2 transition-colors"
+            >
+              <FolderPlus size={14} />
+              New Collection
+            </button>
+          </div>
+        </>
+      )}
       
       {/* Keyboard Shortcut Hint */}
       <div className="flex-shrink-0 p-3 border-t border-border">
@@ -101,6 +168,8 @@ function CollectionsSidebar() {
           <kbd className="px-1.5 py-0.5 bg-surface-1 rounded text-xs">⌘K</kbd>
         </button>
       </div>
+
+      <ImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
     </div>
   );
 }

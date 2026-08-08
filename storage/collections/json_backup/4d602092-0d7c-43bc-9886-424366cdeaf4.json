@@ -1,0 +1,49 @@
+{
+  "id": "4d602092-0d7c-43bc-9886-424366cdeaf4",
+  "name": "test",
+  "createdAt": 1786187110636,
+  "updatedAt": 1786187162624,
+  "requests": [
+    {
+      "id": "1ab9947c-2fca-4b4d-a437-d30e637a9b8a",
+      "name": "New Request",
+      "method": "GET",
+      "url": "https://jsonplaceholder.typicode.com/posts",
+      "headers": [],
+      "params": [],
+      "body": {
+        "activeType": "none",
+        "json": "{\n  \n}",
+        "formdata": [],
+        "raw": ""
+      },
+      "auth": {
+        "type": "none",
+        "data": {}
+      },
+      "createdAt": 1786187117696,
+      "updatedAt": 1786187162627,
+      "isNew": false
+    },
+    {
+      "id": "011c6079-778f-463b-a6d9-31ccaf890c8b",
+      "name": "New Request (copy)",
+      "method": "GET",
+      "url": "https://jsonplaceholder.typicode.com/posts",
+      "headers": [],
+      "params": [],
+      "body": {
+        "activeType": "none",
+        "json": "{\n  \n}",
+        "formdata": [],
+        "raw": ""
+      },
+      "auth": {
+        "type": "none",
+        "data": {}
+      },
+      "createdAt": 1786187140229,
+      "updatedAt": 1786187152879
+    }
+  ]
+}

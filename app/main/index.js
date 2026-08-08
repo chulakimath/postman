@@ -22,6 +22,8 @@ const path = require('path');
 const { createWindow, getMainWindow } = require('./window/windowManager');
 const { registerHandlers } = require('./ipc/handlers');
 const { waitForPending, hasPending } = require('./utils/pendingOperations');
+const { initDb } = require('./storage/db');
+const { runMigration } = require('./storage/migrator');
 
 // Track if we're in the process of quitting
 let isQuitting = false;
@@ -37,7 +39,15 @@ let isQuitting = false;
  */
 
 // Wait for Electron to be ready before creating windows
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Initialize WebAssembly SQLite database and run auto-migration for legacy JSON data
+  try {
+    await initDb();
+    runMigration();
+  } catch (error) {
+    console.error('Error running SQLite initialization/migration:', error);
+  }
+
   // Register all IPC handlers before creating window
   // This ensures handlers are ready when renderer loads
   registerHandlers(ipcMain);

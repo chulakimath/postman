@@ -23,6 +23,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import useEnvironmentStore from './environmentStore';
 
 /**
  * Helper to safely call API methods
@@ -33,6 +34,31 @@ const api = () => typeof window !== 'undefined' ? window.api : null;
  * Generate unique request execution ID
  */
 const generateExecutionId = () => `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+const replaceVarsInString = (str, envVarsMap) => {
+  if (typeof str !== 'string' || !str.includes('{{')) return str;
+  return str.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+    const trimmed = varName.trim();
+    return envVarsMap.has(trimmed) ? envVarsMap.get(trimmed) : match;
+  });
+};
+
+const interpolateObject = (data, envVarsMap) => {
+  if (!data || envVarsMap.size === 0) return data;
+  if (typeof data === 'string') return replaceVarsInString(data, envVarsMap);
+  if (Array.isArray(data)) {
+    return data.map(item => interpolateObject(item, envVarsMap));
+  }
+  if (typeof data === 'object') {
+    const result = {};
+    for (const key of Object.keys(data)) {
+      const interpolatedKey = replaceVarsInString(key, envVarsMap);
+      result[interpolatedKey] = interpolateObject(data[key], envVarsMap);
+    }
+    return result;
+  }
+  return data;
+};
 
 const useResponseStore = create(
   persist(
@@ -106,7 +132,35 @@ const useResponseStore = create(
         });
         
         try {
-          const result = await api()?.executeRequest(request);
+          const activeVars = useEnvironmentStore.getState().getActiveVariables();
+          const envVarsMap = new Map();
+          if (Array.isArray(activeVars)) {
+            activeVars.forEach(v => {
+              if (v.key) envVarsMap.set(v.key.trim(), v.value !== undefined ? v.value : '');
+            });
+          }
+
+          // Interpolate request object client-side
+          const interpolated = envVarsMap.size > 0 ? interpolateObject(request, envVarsMap) : request;
+
+          // Clean URL
+          let finalUrl = (interpolated.url || '').trim();
+          finalUrl = finalUrl.replace(/^https?:\/\/(https?:\/\/)/i, '$1');
+          if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+            if (finalUrl.startsWith('localhost') || finalUrl.startsWith('127.0.0.1')) {
+              finalUrl = `http://${finalUrl}`;
+            } else {
+              finalUrl = `https://${finalUrl}`;
+            }
+          }
+
+          const finalRequest = {
+            ...interpolated,
+            url: finalUrl,
+            environmentVariables: activeVars,
+          };
+
+          const result = await api()?.executeRequest(finalRequest);
           
           // Check if this execution was cancelled or superseded
           const currentState = get();

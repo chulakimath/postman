@@ -17,6 +17,7 @@ import useUIStore from './store/uiStore';
 import CreateCollectionModal from './features/collections/CreateCollectionModal';
 import SearchModal from './features/search/SearchModal';
 import DeleteConfirmModal from './shared/components/DeleteConfirmModal';
+import EnvironmentModal from './features/environments/EnvironmentModal';
 
 function App() {
   // Store actions
@@ -68,6 +69,7 @@ function App() {
       <CreateCollectionModal />
       <SearchModal />
       <DeleteConfirmModal />
+      <EnvironmentModal />
     </div>
   );
 }

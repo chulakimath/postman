@@ -199,7 +199,7 @@ function RequestTabs({ request, onUpdate }) {
         </Tabs.List>
         
         {/* Tab Content */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-4 flex flex-col">
           <Tabs.Content value="params">
             <ParamsEditor
               params={localParams}
@@ -214,7 +214,7 @@ function RequestTabs({ request, onUpdate }) {
             />
           </Tabs.Content>
           
-          <Tabs.Content value="body">
+          <Tabs.Content value="body" className="flex-1 h-full flex flex-col">
             <BodyEditor
               body={localBody}
               onChange={handleBodyChange}

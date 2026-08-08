@@ -20,7 +20,7 @@
  */
 
 import React, { useCallback, useRef, useEffect, memo, useState, lazy, Suspense } from 'react';
-import { FileJson, FormInput, FileText, X, Wand2 } from 'lucide-react';
+import { FileJson, FormInput, FileText, X, Wand2, Minimize2 } from 'lucide-react';
 import KeyValueEditor from '../../shared/components/KeyValueEditor';
 
 // Lazy load Monaco Editor (it's heavy)
@@ -201,111 +201,117 @@ function BodyEditor({ body, onChange, method }) {
   }, []);
   
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full space-y-3">
       {/* Warning for GET/HEAD/OPTIONS */}
       {showWarning && currentType !== 'none' && (
         <div className="px-3 py-2 bg-accent-yellow/10 border border-accent-yellow/30 
-                        rounded-md text-sm text-accent-yellow">
+                        rounded-md text-sm text-accent-yellow flex-shrink-0">
           {method} requests typically don't include a body. Consider using POST, PUT, or PATCH.
         </div>
       )}
       
-      {/* Type Selector */}
-      <div className="flex items-center gap-1 p-1 bg-surface-3 rounded-lg w-fit">
-        {BODY_TYPES.map((type) => {
-          const Icon = type.icon;
-          const isActive = currentType === type.value;
-          
-          return (
+      {/* Top Toolbar: Type Selector & Action Buttons */}
+      <div className="flex items-center justify-between gap-2 flex-shrink-0">
+        {/* Type Selector */}
+        <div className="flex items-center gap-1 p-1 bg-surface-3 rounded-lg w-fit">
+          {BODY_TYPES.map((type) => {
+            const Icon = type.icon;
+            const isActive = currentType === type.value;
+            
+            return (
+              <button
+                key={type.value}
+                type="button"
+                onClick={() => handleTypeChange(type.value)}
+                className={`
+                  flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
+                  transition-colors
+                  ${isActive 
+                    ? 'bg-surface-1 text-text-primary shadow-sm' 
+                    : 'text-text-secondary hover:text-text-primary'
+                  }
+                `}
+              >
+                <Icon size={14} />
+                {type.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Top Action Buttons for JSON */}
+        {currentType === 'json' && (
+          <div className="flex items-center gap-2">
             <button
-              key={type.value}
               type="button"
-              onClick={() => handleTypeChange(type.value)}
-              className={`
-                flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
-                transition-colors
-                ${isActive 
-                  ? 'bg-surface-1 text-text-primary shadow-sm' 
-                  : 'text-text-secondary hover:text-text-primary'
-                }
-              `}
+              onClick={handleBeautify}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                         bg-surface-3 hover:bg-surface-4 text-text-secondary hover:text-accent-orange
+                         rounded-md transition-colors border border-border shadow-sm"
+              title="Format JSON (Beautify)"
             >
-              <Icon size={14} />
-              {type.label}
+              <Wand2 size={13} />
+              Beautify
             </button>
-          );
-        })}
+            <button
+              type="button"
+              onClick={handleMinify}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                         bg-surface-3 hover:bg-surface-4 text-text-secondary hover:text-accent-orange
+                         rounded-md transition-colors border border-border shadow-sm"
+              title="Compress JSON (Minify)"
+            >
+              <Minimize2 size={13} />
+              Minify
+            </button>
+          </div>
+        )}
       </div>
       
-      {/* Content Editor */}
-      <div className="min-h-[200px]">
+      {/* Content Editor Area */}
+      <div className="flex-1 min-h-[300px] h-full flex flex-col overflow-hidden">
         {currentType === 'none' && (
-          <div className="flex items-center justify-center h-[200px] text-text-muted text-sm">
+          <div className="flex items-center justify-center h-full text-text-muted text-sm border border-border rounded-md bg-surface-2/50">
             This request does not have a body
           </div>
         )}
         
         {currentType === 'json' && (
-          <>
-            <Suspense fallback={<EditorLoading />}>
-              <div className="border border-border rounded-md overflow-hidden">
-                <MonacoEditor
-                  height="300px"
-                  language="json"
-                  value={jsonContent}
-                  onChange={handleJsonChange}
-                  onMount={handleEditorMount}
-                  theme="vs-dark"
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    tabSize: 2,
-                    wordWrap: 'on',
-                    padding: { top: 10 },
-                    formatOnPaste: true,
-                    formatOnType: true,
-                  }}
-                />
-              </div>
-            </Suspense>
-            
-            {/* Beautify/Minify buttons below editor */}
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                type="button"
-                onClick={handleBeautify}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm
-                           bg-surface-3 hover:bg-surface-4 text-text-secondary hover:text-text-primary
-                           rounded-md transition-colors border border-border"
-                title="Format JSON (Beautify)"
-              >
-                <Wand2 size={14} />
-                Beautify
-              </button>
-              <button
-                type="button"
-                onClick={handleMinify}
-                className="px-3 py-1.5 text-sm
-                           bg-surface-3 hover:bg-surface-4 text-text-secondary hover:text-text-primary
-                           rounded-md transition-colors border border-border"
-                title="Compress JSON (Minify)"
-              >
-                Minify
-              </button>
+          <Suspense fallback={<EditorLoading />}>
+            <div className="flex-1 h-full border border-border rounded-md overflow-hidden min-h-[300px]">
+              <MonacoEditor
+                height="100%"
+                language="json"
+                value={jsonContent}
+                onChange={handleJsonChange}
+                onMount={handleEditorMount}
+                theme="vs-dark"
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                  padding: { top: 10 },
+                  formatOnPaste: true,
+                  formatOnType: true,
+                }}
+              />
             </div>
-          </>
+          </Suspense>
         )}
         
         {currentType === 'formdata' && (
-          <KeyValueEditor
-            items={formdataContent}
-            onChange={handleFormdataChange}
-            keyPlaceholder="Field name"
-            valuePlaceholder="Field value"
-          />
+          <div className="flex-1 overflow-auto">
+            <KeyValueEditor
+              items={formdataContent}
+              onChange={handleFormdataChange}
+              keyPlaceholder="Field name"
+              valuePlaceholder="Field value"
+            />
+          </div>
         )}
         
         {currentType === 'raw' && (
@@ -352,7 +358,7 @@ const RawTextArea = memo(function RawTextArea({ value, onChange }) {
       value={localValue}
       onChange={handleChange}
       placeholder="Enter raw body content..."
-      className="w-full h-[300px] p-4 bg-surface-3 border border-border rounded-md
+      className="w-full h-full min-h-[300px] flex-1 p-4 bg-surface-3 border border-border rounded-md
                  text-text-primary placeholder:text-text-muted
                  font-mono text-sm resize-none
                  focus:border-accent-orange focus:ring-1 focus:ring-accent-orange"
@@ -365,7 +371,7 @@ const RawTextArea = memo(function RawTextArea({ value, onChange }) {
  */
 function EditorLoading() {
   return (
-    <div className="h-[300px] bg-surface-3 border border-border rounded-md
+    <div className="h-full min-h-[300px] bg-surface-3 border border-border rounded-md
                     flex items-center justify-center">
       <div className="flex items-center gap-2 text-text-muted">
         <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />

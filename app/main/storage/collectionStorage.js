@@ -1,111 +1,82 @@
 /**
- * Collection Storage
+ * Collection Storage (SQLite Backend)
  * 
- * Handles file-based persistence of collections.
- * Each collection is stored as a separate JSON file.
- * 
- * Storage location: [app-path]/storage/collections/[id].json
- * 
- * Benefits of file-per-collection:
- * - Atomic saves (one collection won't corrupt another)
- * - Easy to backup/restore individual collections
- * - Better performance for large collections
- * - Future-ready for sync features
- * 
- * CRITICAL: All write operations are tracked to ensure completion before app quit.
+ * Manages collections and requests persistence using SQLite database.
+ * Replaces loose JSON files with indexed SQL queries for fast performance and scaling.
  */
 
-const fs = require('fs').promises;
-const path = require('path');
+const { getDb } = require('./db');
 const { v4: uuidv4 } = require('uuid');
-const { app } = require('electron');
-const { trackOperation } = require('../utils/pendingOperations');
 
 /**
- * Get the storage directory path
- * Uses app.getPath('userData') for proper OS-specific location
+ * Format raw SQLite database rows into standard collection object
  */
-const getStorageDir = () => {
-  // In development, use project directory
-  // In production, use app data directory
-  const isDev = !app.isPackaged;
-  
-  if (isDev) {
-    return path.join(__dirname, '..', '..', '..', 'storage', 'collections');
-  }
-  
-  return path.join(app.getPath('userData'), 'storage', 'collections');
+const formatCollection = (colRow, requestRows = []) => {
+  if (!colRow) return null;
+
+  const formattedRequests = requestRows.map(req => {
+    let headers = [];
+    let params = [];
+    let body = { activeType: 'none', json: '{\n  \n}', formdata: [], raw: '' };
+    let auth = { type: 'none', data: {} };
+
+    try { headers = JSON.parse(req.headers || '[]'); } catch (e) { console.error('Parse error headers:', e); }
+    try { params = JSON.parse(req.params || '[]'); } catch (e) { console.error('Parse error params:', e); }
+    try { body = JSON.parse(req.body || '{}'); } catch (e) { console.error('Parse error body:', e); }
+    try { auth = JSON.parse(req.auth || '{}'); } catch (e) { console.error('Parse error auth:', e); }
+
+    return {
+      id: req.id,
+      name: req.name,
+      method: req.method,
+      url: req.url,
+      headers,
+      params,
+      body,
+      auth,
+      createdAt: req.created_at,
+      updatedAt: req.updated_at,
+    };
+  });
+
+  return {
+    id: colRow.id,
+    name: colRow.name,
+    createdAt: colRow.created_at,
+    updatedAt: colRow.updated_at,
+    requests: formattedRequests,
+  };
 };
 
 /**
- * Ensure the storage directory exists
- */
-const ensureStorageDir = async () => {
-  const dir = getStorageDir();
-  try {
-    await fs.mkdir(dir, { recursive: true });
-  } catch (error) {
-    // Directory might already exist, that's fine
-    if (error.code !== 'EEXIST') {
-      throw error;
-    }
-  }
-};
-
-/**
- * Get the file path for a collection
- * @param {string} id - Collection ID
- * @returns {string} Full file path
- */
-const getCollectionPath = (id) => {
-  return path.join(getStorageDir(), `${id}.json`);
-};
-
-/**
- * Atomic write helper
- * Writes to temp file first, then renames for atomicity
- * @param {string} filePath - Target file path
- * @param {Object} data - Data to write
- */
-const atomicWrite = async (filePath, data) => {
-  const tempPath = `${filePath}.tmp`;
-  const content = JSON.stringify(data, null, 2);
-  
-  await fs.writeFile(tempPath, content, 'utf-8');
-  await fs.rename(tempPath, filePath);
-};
-
-/**
- * Get all collections
- * Reads all JSON files from storage directory
+ * Get all collections with their nested requests
  * @returns {Promise<Array>} Array of collection objects
  */
 const getAllCollections = async () => {
-  await ensureStorageDir();
+  const db = getDb();
   
-  const dir = getStorageDir();
-  const files = await fs.readdir(dir);
-  
-  const collections = [];
-  
-  for (const file of files) {
-    if (file.endsWith('.json')) {
-      try {
-        const filePath = path.join(dir, file);
-        const content = await fs.readFile(filePath, 'utf-8');
-        const collection = JSON.parse(content);
-        collections.push(collection);
-      } catch (error) {
-        console.error(`Error reading collection file ${file}:`, error);
-        // Skip corrupted files, don't crash the app
-      }
+  const colRows = db.prepare(`
+    SELECT id, name, created_at, updated_at 
+    FROM collections 
+    ORDER BY created_at DESC
+  `).all();
+
+  const reqRows = db.prepare(`
+    SELECT id, collection_id, name, method, url, headers, params, body, auth, sort_order, created_at, updated_at
+    FROM requests
+    ORDER BY sort_order ASC, created_at ASC
+  `).all();
+
+  // Group requests by collection_id
+  const reqsByCol = {};
+  reqRows.forEach(req => {
+    if (!reqsByCol[req.collection_id]) {
+      reqsByCol[req.collection_id] = [];
     }
-  }
-  
-  // Sort by creation date (newest first)
-  collections.sort((a, b) => b.createdAt - a.createdAt);
-  
-  return collections;
+    reqsByCol[req.collection_id].push(req);
+  });
+
+  return colRows.map(col => formatCollection(col, reqsByCol[col.id] || []));
 };
 
 /**
@@ -114,16 +85,24 @@ const getAllCollections = async () => {
  * @returns {Promise<Object|null>} Collection or null if not found
  */
 const getCollection = async (id) => {
-  try {
-    const filePath = getCollectionPath(id);
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return null; // File doesn't exist
-    }
-    throw error;
-  }
+  const db = getDb();
+
+  const colRow = db.prepare(`
+    SELECT id, name, created_at, updated_at 
+    FROM collections 
+    WHERE id = ?
+  `).get(id);
+
+  if (!colRow) return null;
+
+  const reqRows = db.prepare(`
+    SELECT id, collection_id, name, method, url, headers, params, body, auth, sort_order, created_at, updated_at
+    FROM requests
+    WHERE collection_id = ?
+    ORDER BY sort_order ASC, created_at ASC
+  `).all(id);
+
+  return formatCollection(colRow, reqRows);
 };
 
 /**
@@ -132,63 +111,119 @@ const getCollection = async (id) => {
  * @returns {Promise<Object>} Created collection
  */
 const createCollection = async (data) => {
-  await ensureStorageDir();
-  
+  const db = getDb();
   const now = Date.now();
-  
-  const collection = {
-    id: uuidv4(),
-    name: data.name || 'New Collection',
+  const id = uuidv4();
+  const name = data.name || 'New Collection';
+
+  db.prepare(`
+    INSERT INTO collections (id, name, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+  `).run(id, name, now, now);
+
+  return {
+    id,
+    name,
     createdAt: now,
     updatedAt: now,
     requests: [],
   };
-  
-  const filePath = getCollectionPath(collection.id);
-  
-  // Track this write operation for shutdown handling
-  const writeOperation = atomicWrite(filePath, collection);
-  trackOperation(writeOperation);
-  await writeOperation;
-  
-  return collection;
 };
 
 /**
- * Update an existing collection
- * Uses atomic write pattern for data safety
- * TRACKED: This operation is tracked to ensure completion before app quit
- * 
+ * Update an existing collection and sync its requests inside a transaction
  * @param {string} id - Collection ID
  * @param {Object} data - Updated collection data
  * @returns {Promise<Object>} Updated collection
  */
 const updateCollection = async (id, data) => {
-  const existing = await getCollection(id);
-  
-  if (!existing) {
+  const db = getDb();
+
+  const existingCol = db.prepare('SELECT id, name, created_at, updated_at FROM collections WHERE id = ?').get(id);
+  if (!existingCol) {
     throw new Error(`Collection not found: ${id}`);
   }
-  
-  const updated = {
-    ...existing,
-    ...data,
-    id: existing.id, // Never allow ID change
-    createdAt: existing.createdAt, // Preserve creation date
-    updatedAt: Date.now(),
-  };
-  
-  const filePath = getCollectionPath(id);
-  
-  // Track this write operation for shutdown handling
-  // This is CRITICAL for ensuring renames persist before app close
-  const writeOperation = atomicWrite(filePath, updated);
-  trackOperation(writeOperation);
-  await writeOperation;
-  
-  console.log(`Collection ${id} saved to disk`);
-  
-  return updated;
+
+  const now = Date.now();
+  const updatedName = data.name !== undefined ? data.name : existingCol.name;
+
+  const executeUpdate = db.transaction(() => {
+    // 1. Update collection table
+    db.prepare(`
+      UPDATE collections
+      SET name = ?, updated_at = ?
+      WHERE id = ?
+    `).run(updatedName, now, id);
+
+    // 2. If requests array is provided, sync requests
+    if (Array.isArray(data.requests)) {
+      const incomingIds = new Set(data.requests.map(r => r.id));
+
+      // Get existing request IDs in DB for this collection
+      const currentReqRows = db.prepare('SELECT id FROM requests WHERE collection_id = ?').all(id);
+      const currentIds = currentReqRows.map(r => r.id);
+
+      // Delete requests no longer in incoming array
+      const deleteReqStmt = db.prepare('DELETE FROM requests WHERE id = ?');
+      for (const currentId of currentIds) {
+        if (!incomingIds.has(currentId)) {
+          deleteReqStmt.run(currentId);
+        }
+      }
+
+      // Upsert incoming requests
+      const upsertReqStmt = db.prepare(`
+        INSERT INTO requests (
+          id, collection_id, name, method, url, headers, params, body, auth, sort_order, created_at, updated_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          collection_id = excluded.collection_id,
+          name = excluded.name,
+          method = excluded.method,
+          url = excluded.url,
+          headers = excluded.headers,
+          params = excluded.params,
+          body = excluded.body,
+          auth = excluded.auth,
+          sort_order = excluded.sort_order,
+          updated_at = excluded.updated_at
+      `);
+
+      data.requests.forEach((req, idx) => {
+        const reqId = req.id || uuidv4();
+        const reqName = req.name || 'Untitled Request';
+        const reqMethod = req.method || 'GET';
+        const reqUrl = req.url || '';
+        const reqHeaders = JSON.stringify(req.headers || []);
+        const reqParams = JSON.stringify(req.params || []);
+        const reqBody = JSON.stringify(req.body || { activeType: 'none', json: '{\n  \n}', formdata: [], raw: '' });
+        const reqAuth = JSON.stringify(req.auth || { type: 'none', data: {} });
+        const reqCreatedAt = req.createdAt || now;
+        const reqUpdatedAt = req.updatedAt || now;
+
+        upsertReqStmt.run(
+          reqId,
+          id,
+          reqName,
+          reqMethod,
+          reqUrl,
+          reqHeaders,
+          reqParams,
+          reqBody,
+          reqAuth,
+          idx,
+          reqCreatedAt,
+          reqUpdatedAt
+        );
+      });
+    }
+  });
+
+  executeUpdate();
+
+  return getCollection(id);
 };
 
 /**
@@ -197,19 +232,8 @@ const updateCollection = async (id, data) => {
  * @returns {Promise<void>}
  */
 const deleteCollection = async (id) => {
-  const filePath = getCollectionPath(id);
-  
-  try {
-    // Track delete operation too
-    const deleteOperation = fs.unlink(filePath);
-    trackOperation(deleteOperation);
-    await deleteOperation;
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      throw error;
-    }
-    // File already doesn't exist, that's fine
-  }
+  const db = getDb();
+  db.prepare('DELETE FROM collections WHERE id = ?').run(id);
 };
 
 module.exports = {

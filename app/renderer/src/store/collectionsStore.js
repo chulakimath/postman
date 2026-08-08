@@ -232,6 +232,27 @@ const useCollectionsStore = create((set, get) => ({
   },
   
   /**
+   * Duplicate a collection and all its requests
+   * @param {string} collectionId - Collection ID
+   */
+  duplicateCollection: async (collectionId) => {
+    const collection = get().collections.find(c => c.id === collectionId);
+    if (!collection) return null;
+    
+    const created = await get().createCollection(`${collection.name} (Copy)`);
+    if (created && collection.requests && collection.requests.length > 0) {
+      const duplicatedRequests = collection.requests.map(r => ({
+        ...r,
+        id: crypto.randomUUID(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+      await get().updateCollection(created.id, { requests: duplicatedRequests });
+    }
+    return created;
+  },
+
+  /**
    * Clear any error state
    */
   clearError: () => {

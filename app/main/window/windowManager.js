@@ -1,6 +1,6 @@
 /**
  * Window Manager
- * 
+ *
  * Handles creation and management of the main application window.
  * Responsibilities:
  * - Create window with secure settings
@@ -8,8 +8,8 @@
  * - Manage window state (size, position)
  */
 
-const { BrowserWindow } = require('electron');
-const path = require('path');
+const { BrowserWindow } = require("electron");
+const path = require("path");
 
 // Store reference to main window
 let mainWindow = null;
@@ -20,12 +20,12 @@ let mainWindow = null;
  * In production, we load from built files
  */
 const isDev = () => {
-  return !require('electron').app.isPackaged;
+  return !require("electron").app.isPackaged;
 };
 
 /**
  * Create the main application window
- * 
+ *
  * Security settings explained:
  * - nodeIntegration: false - Prevents renderer from accessing Node.js APIs directly
  * - contextIsolation: true - Isolates preload script from renderer context
@@ -39,35 +39,36 @@ const createWindow = () => {
     minHeight: 600,
 
     // Window appearance
-    backgroundColor: '#1a1a1a', // Dark background to prevent flash
-    title: 'Testly Desktop',
-    icon: path.join(__dirname, '..', '..', 'assets', 'testly.ico'),
-
+    backgroundColor: "#1a1a1a", // Dark background to prevent flash
+    title: "Testly Desktop",
+    icon: path.join(__dirname, "..", "..", "assets", "testly.ico"),
 
     // Security settings (VERY IMPORTANT)
     webPreferences: {
-      nodeIntegration: false,        // Never allow direct Node access
-      contextIsolation: true,        // Isolate contexts for security
-      sandbox: true,                 // Additional sandboxing
-      preload: path.join(__dirname, '..', 'preload', 'bridge.js'),
+      nodeIntegration: false, // Never allow direct Node access
+      contextIsolation: true, // Isolate contexts for security
+      sandbox: false, // Additional sandboxing
+      preload: path.join(__dirname, "..", "preload", "bridge.js"),
     },
   });
 
   // Load the app
   if (isDev()) {
     // Development: Load from Vite dev server
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL("http://localhost:5173");
 
     // Open DevTools in development
     mainWindow.webContents.openDevTools();
   } else {
     // Production: Load from built files
     // __dirname is app/main/window/, need to go to app/renderer/dist/
-    mainWindow.loadFile(path.join(__dirname, '..', '..', 'renderer', 'dist', 'index.html'));
+    mainWindow.loadFile(
+      path.join(__dirname, "..", "..", "renderer", "dist", "index.html"),
+    );
   }
 
   // Handle window closed
-  mainWindow.on('closed', () => {
+  mainWindow.on("closed", () => {
     mainWindow = null;
   });
 

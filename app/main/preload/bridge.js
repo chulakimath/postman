@@ -63,6 +63,22 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // ==========================================
+  // Environment Operations
+  // ==========================================
+  getEnvironments: () => {
+    return ipcRenderer.invoke('environments:list');
+  },
+  createEnvironment: (data) => {
+    return ipcRenderer.invoke('environments:create', data);
+  },
+  updateEnvironment: (id, data) => {
+    return ipcRenderer.invoke('environments:update', id, data);
+  },
+  deleteEnvironment: (id) => {
+    return ipcRenderer.invoke('environments:delete', id);
+  },
+
+  // ==========================================
   // Request Operations
   // ==========================================
   

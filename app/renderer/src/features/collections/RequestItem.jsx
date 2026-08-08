@@ -11,23 +11,22 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { MoreHorizontal, Edit2, Trash2, Copy } from 'lucide-react';
+import { MoreHorizontal, Edit2, Trash2, Copy, ExternalLink, Link } from 'lucide-react';
 import useCollectionsStore from '../../store/collectionsStore';
 import useRequestsStore from '../../store/requestsStore';
 import useUIStore from '../../store/uiStore';
 import MethodBadge from '../../shared/components/MethodBadge';
 
 function RequestItem({ request, collectionId, searchQuery = '' }) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuState, setMenuState] = useState({ isOpen: false, x: 0, y: 0 });
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(request.name);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
   const inputRef = useRef(null);
   const menuButtonRef = useRef(null);
 
   const { updateRequest, duplicateRequest } = useCollectionsStore();
-  const { openRequest, activeRequestId, updateTabInfo } = useRequestsStore();
+  const { openRequest, activeRequestId } = useRequestsStore();
   const { openDeleteConfirmModal } = useUIStore();
 
   const isActive = activeRequestId === request.id;
@@ -38,17 +37,6 @@ function RequestItem({ request, collectionId, searchQuery = '' }) {
       setRenameValue(request.name);
     }
   }, [request.name, isRenaming]);
-
-  // Calculate menu position when opening
-  useEffect(() => {
-    if (isMenuOpen && menuButtonRef.current) {
-      const rect = menuButtonRef.current.getBoundingClientRect();
-      setMenuPosition({
-        top: rect.bottom + 4,
-        left: Math.max(rect.left - 100, 10), // Position to the left, ensure not off-screen
-      });
-    }
-  }, [isMenuOpen]);
 
   /**
    * Handle click - open request in editor
@@ -77,7 +65,7 @@ function RequestItem({ request, collectionId, searchQuery = '' }) {
   const startRename = () => {
     setRenameValue(request.name);
     setIsRenaming(true);
-    setIsMenuOpen(false);
+    setMenuState({ isOpen: false, x: 0, y: 0 });
     setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -88,8 +76,41 @@ function RequestItem({ request, collectionId, searchQuery = '' }) {
    * Handle duplicate
    */
   const handleDuplicate = async () => {
-    setIsMenuOpen(false);
+    setMenuState({ isOpen: false, x: 0, y: 0 });
     await duplicateRequest(collectionId, request.id);
+  };
+
+  /**
+   * Handle right click / context menu
+   */
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const menuWidth = 180;
+    const menuHeight = 180;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 10);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight - 10);
+
+    setMenuState({
+      isOpen: true,
+      x: Math.max(10, x),
+      y: Math.max(10, y),
+    });
+  };
+
+  const handleMenuButtonClick = (e) => {
+    e.stopPropagation();
+    if (menuState.isOpen) {
+      setMenuState({ isOpen: false, x: 0, y: 0 });
+    } else if (menuButtonRef.current) {
+      const rect = menuButtonRef.current.getBoundingClientRect();
+      setMenuState({
+        isOpen: true,
+        x: Math.max(10, rect.left - 130),
+        y: Math.max(10, rect.bottom + 4),
+      });
+    }
   };
 
   /**
@@ -98,33 +119,38 @@ function RequestItem({ request, collectionId, searchQuery = '' }) {
   const highlightMatch = (text) => {
     if (!searchQuery) return text;
 
-    const regex = new RegExp(`(${searchQuery})`, 'gi');
-    const parts = text.split(regex);
+    try {
+      const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(${escapedQuery})`, 'gi');
+      const parts = text.split(regex);
 
-    return parts.map((part, i) =>
-      regex.test(part)
-        ? <mark key={i} className="bg-accent-orange/30 text-text-primary">{part}</mark>
-        : part
-    );
+      return parts.map((part, i) =>
+        regex.test(part)
+          ? <mark key={i} className="bg-accent-orange/30 text-text-primary">{part}</mark>
+          : part
+      );
+    } catch (e) {
+      return text;
+    }
   };
 
   return (
     <div
       className={`
-        flex items-center gap-2 px-3 py-1.5 cursor-pointer
-        transition-colors group
+        flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none
+        transition-colors group rounded-md
         ${isActive ? 'bg-surface-4' : 'hover:bg-surface-3'}
       `}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
     >
       {/* Method Badge */}
       <div className="flex-shrink-0">
         <MethodBadge method={request.method} size="sm" />
       </div>
 
-      {/* Name Container - Fixed structure to prevent layout shift */}
+      {/* Name Container */}
       <div className="flex-1 min-w-0 relative">
-        {/* Always render the text span to maintain layout */}
         <span
           className={`
             block text-sm text-text-secondary truncate
@@ -163,81 +189,109 @@ function RequestItem({ request, collectionId, searchQuery = '' }) {
       <div className="relative flex-shrink-0">
         <button
           ref={menuButtonRef}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsMenuOpen(!isMenuOpen);
-          }}
+          onClick={handleMenuButtonClick}
           className={`
             p-1 rounded hover:bg-surface-4 transition-colors
-            ${isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+            ${menuState.isOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
           `}
         >
           <MoreHorizontal size={14} className="text-text-muted" />
         </button>
+      </div>
 
-        {/* Dropdown Menu - Using fixed position to avoid overflow issues */}
-        {isMenuOpen && (
-          <>
-            {/* Backdrop to close menu */}
-            <div
-              className="fixed inset-0 z-[100]"
+      {/* Fixed Context Menu Overlay */}
+      {menuState.isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[100]"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuState({ isOpen: false, x: 0, y: 0 });
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setMenuState({ isOpen: false, x: 0, y: 0 });
+            }}
+          />
+
+          <div
+            className="fixed z-[101] w-48 py-1.5 bg-surface-3 border border-border rounded-lg shadow-2xl animate-fade-in text-sm"
+            style={{
+              top: `${menuState.y}px`,
+              left: `${menuState.x}px`,
+            }}
+          >
+            <button
               onClick={(e) => {
                 e.stopPropagation();
-                setIsMenuOpen(false);
+                setMenuState({ isOpen: false, x: 0, y: 0 });
+                handleClick();
               }}
-            />
-
-            <div
-              className="fixed z-[101] w-40 py-1 bg-surface-3 border border-border rounded-md shadow-xl animate-fade-in"
-              style={{
-                top: `${menuPosition.top}px`,
-                left: `${menuPosition.left}px`,
-              }}
+              className="w-full px-3 py-1.5 text-left text-text-secondary
+                         hover:bg-surface-4 hover:text-text-primary
+                         flex items-center gap-2 transition-colors"
             >
+              <ExternalLink size={14} />
+              Open Request
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDuplicate();
+              }}
+              className="w-full px-3 py-1.5 text-left text-text-secondary
+                         hover:bg-surface-4 hover:text-text-primary
+                         flex items-center gap-2 transition-colors"
+            >
+              <Copy size={14} />
+              Duplicate Request
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                startRename();
+              }}
+              className="w-full px-3 py-1.5 text-left text-text-secondary
+                         hover:bg-surface-4 hover:text-text-primary
+                         flex items-center gap-2 transition-colors"
+            >
+              <Edit2 size={14} />
+              Rename
+            </button>
+            {request.url && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  startRename();
+                  navigator.clipboard.writeText(request.url);
+                  setMenuState({ isOpen: false, x: 0, y: 0 });
                 }}
-                className="w-full px-3 py-2 text-left text-sm text-text-secondary
+                className="w-full px-3 py-1.5 text-left text-text-secondary
                            hover:bg-surface-4 hover:text-text-primary
                            flex items-center gap-2 transition-colors"
               >
-                <Edit2 size={14} />
-                Rename
+                <Link size={14} />
+                Copy URL
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDuplicate();
-                }}
-                className="w-full px-3 py-2 text-left text-sm text-text-secondary
-                           hover:bg-surface-4 hover:text-text-primary
-                           flex items-center gap-2 transition-colors"
-              >
-                <Copy size={14} />
-                Duplicate
-              </button>
-              <div className="my-1 border-t border-border" />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMenuOpen(false);
-                  openDeleteConfirmModal('request', request.id, request.name, collectionId);
-                }}
-                className="w-full px-3 py-2 text-left text-sm text-accent-red
-                           hover:bg-accent-red/10
-                           flex items-center gap-2 transition-colors"
-              >
-                <Trash2 size={14} />
-                Delete
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+            )}
+            <div className="my-1 border-t border-border" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuState({ isOpen: false, x: 0, y: 0 });
+                openDeleteConfirmModal('request', request.id, request.name, collectionId);
+              }}
+              className="w-full px-3 py-1.5 text-left text-accent-red
+                         hover:bg-accent-red/10
+                         flex items-center gap-2 transition-colors"
+            >
+              <Trash2 size={14} />
+              Delete
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
-
 export default RequestItem;

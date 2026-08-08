@@ -205,6 +205,118 @@ const useRequestsStore = create(
           // drafts are NOT modified - preserved for reopening
         });
       },
+
+      /**
+       * Close all tabs except the specified one
+       */
+      closeOtherTabs: (requestId) => {
+        const { openTabs } = get();
+        const targetTab = openTabs.find(t => t.requestId === requestId);
+        if (!targetTab) return;
+
+        useResponseStore.getState().setActiveRequestId(requestId);
+        set({
+          openTabs: [targetTab],
+          activeRequestId: requestId,
+          activeCollectionId: targetTab.collectionId,
+        });
+      },
+
+      /**
+       * Close tabs to the right of the specified tab
+       */
+      closeTabsToRight: (requestId) => {
+        const { openTabs, activeRequestId } = get();
+        const targetIndex = openTabs.findIndex(t => t.requestId === requestId);
+        if (targetIndex === -1) return;
+
+        const newTabs = openTabs.slice(0, targetIndex + 1);
+        let newActiveId = activeRequestId;
+        let newActiveCollection = get().activeCollectionId;
+
+        const activeIndex = openTabs.findIndex(t => t.requestId === activeRequestId);
+        if (activeIndex > targetIndex) {
+          const targetTab = openTabs[targetIndex];
+          newActiveId = targetTab.requestId;
+          newActiveCollection = targetTab.collectionId;
+          useResponseStore.getState().setActiveRequestId(newActiveId);
+        }
+
+        set({
+          openTabs: newTabs,
+          activeRequestId: newActiveId,
+          activeCollectionId: newActiveCollection,
+        });
+      },
+
+      /**
+       * Close tabs to the left of the specified tab
+       */
+      closeTabsToLeft: (requestId) => {
+        const { openTabs, activeRequestId } = get();
+        const targetIndex = openTabs.findIndex(t => t.requestId === requestId);
+        if (targetIndex === -1) return;
+
+        const newTabs = openTabs.slice(targetIndex);
+        let newActiveId = activeRequestId;
+        let newActiveCollection = get().activeCollectionId;
+
+        const activeIndex = openTabs.findIndex(t => t.requestId === activeRequestId);
+        if (activeIndex < targetIndex) {
+          const targetTab = openTabs[targetIndex];
+          newActiveId = targetTab.requestId;
+          newActiveCollection = targetTab.collectionId;
+          useResponseStore.getState().setActiveRequestId(newActiveId);
+        }
+
+        set({
+          openTabs: newTabs,
+          activeRequestId: newActiveId,
+          activeCollectionId: newActiveCollection,
+        });
+      },
+
+      /**
+       * Close all open tabs
+       */
+      closeAllTabs: () => {
+        useResponseStore.getState().setActiveRequestId(null);
+        set({
+          openTabs: [],
+          activeRequestId: null,
+          activeCollectionId: null,
+        });
+      },
+
+      /**
+       * Close all saved (unmodified) tabs
+       */
+      closeSavedTabs: () => {
+        const { openTabs, activeRequestId, dirtyRequests } = get();
+        const newTabs = openTabs.filter(t => !!dirtyRequests[t.requestId]);
+
+        let newActiveId = activeRequestId;
+        let newActiveCollection = get().activeCollectionId;
+
+        if (newTabs.length === 0) {
+          newActiveId = null;
+          newActiveCollection = null;
+        } else if (!newTabs.some(t => t.requestId === activeRequestId)) {
+          const lastTab = newTabs[newTabs.length - 1];
+          newActiveId = lastTab.requestId;
+          newActiveCollection = lastTab.collectionId;
+        }
+
+        if (newActiveId) {
+          useResponseStore.getState().setActiveRequestId(newActiveId);
+        }
+
+        set({
+          openTabs: newTabs,
+          activeRequestId: newActiveId,
+          activeCollectionId: newActiveCollection,
+        });
+      },
       
       /**
        * Set active tab

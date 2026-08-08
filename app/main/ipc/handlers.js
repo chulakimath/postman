@@ -13,6 +13,7 @@
  */
 
 const collectionStorage = require('../storage/collectionStorage');
+const environmentStorage = require('../storage/environmentStorage');
 const requestExecutor = require('../http/requestExecutor');
 const appStateStorage = require('../storage/appStateStorage');
 const { waitForPending, hasPending, getPendingCount } = require('../utils/pendingOperations');
@@ -79,6 +80,49 @@ const registerHandlers = (ipcMain) => {
       return { success: true };
     } catch (error) {
       console.error('Error deleting collection:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // ==========================================
+  // Environment Handlers
+  // ==========================================
+  ipcMain.handle('environments:list', async () => {
+    try {
+      const environments = await environmentStorage.getAllEnvironments();
+      return { success: true, data: environments };
+    } catch (error) {
+      console.error('Error listing environments:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('environments:create', async (event, data) => {
+    try {
+      const environment = await environmentStorage.createEnvironment(data);
+      return { success: true, data: environment };
+    } catch (error) {
+      console.error('Error creating environment:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('environments:update', async (event, id, data) => {
+    try {
+      const environment = await environmentStorage.updateEnvironment(id, data);
+      return { success: true, data: environment };
+    } catch (error) {
+      console.error('Error updating environment:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('environments:delete', async (event, id) => {
+    try {
+      await environmentStorage.deleteEnvironment(id);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting environment:', error);
       return { success: false, error: error.message };
     }
   });

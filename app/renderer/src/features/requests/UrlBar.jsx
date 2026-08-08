@@ -15,6 +15,7 @@ import { useState, useCallback, memo } from 'react';
 import { Send, ChevronDown, X } from 'lucide-react';
 import Button from '../../shared/components/Button';
 import useResponseStore from '../../store/responseStore';
+import EnvironmentSelector from '../environments/EnvironmentSelector';
 
 const HTTP_METHODS = [
   { value: 'GET', color: 'text-method-GET' },
@@ -121,7 +122,7 @@ function UrlBar({ method = 'GET', url = '', onMethodChange, onUrlChange, onSend,
           value={url}
           onChange={handleUrlChange}
           onKeyDown={handleKeyDown}
-          placeholder="Enter request URL (e.g., https://api.example.com/users)"
+          placeholder="Enter request URL (e.g., {{baseUrl}}/users)"
           className="w-full bg-surface-3 border border-border rounded-md
                      px-4 py-2.5 text-text-primary placeholder:text-text-muted
                      focus:border-accent-orange focus:ring-1 focus:ring-accent-orange
@@ -129,6 +130,9 @@ function UrlBar({ method = 'GET', url = '', onMethodChange, onUrlChange, onSend,
         />
       </div>
       
+      {/* Environment Selector */}
+      <EnvironmentSelector />
+
       {/* Send or Cancel Button */}
       {isLoading ? (
         <Button

@@ -23,22 +23,26 @@ import {
   Trash2,
   Folder,
   FolderOpen,
+  Copy,
+  Download,
 } from 'lucide-react';
 import useCollectionsStore from '../../store/collectionsStore';
 import useRequestsStore from '../../store/requestsStore';
 import useUIStore from '../../store/uiStore';
+import { exportCollection } from '../../utils/importerExporter';
 import RequestItem from './RequestItem';
 
 function CollectionItem({ collection, searchQuery = '' }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuState, setMenuState] = useState({ isOpen: false, x: 0, y: 0 });
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(collection.name);
   
   const inputRef = useRef(null);
   const nameContainerRef = useRef(null);
+  const menuButtonRef = useRef(null);
   
-  const { updateCollection, addRequest, setActiveCollection, activeCollectionId } = useCollectionsStore();
+  const { updateCollection, duplicateCollection, setActiveCollection, activeCollectionId } = useCollectionsStore();
   const { createNewRequest } = useRequestsStore();
   const { openDeleteConfirmModal } = useUIStore();
   
@@ -80,9 +84,17 @@ function CollectionItem({ collection, searchQuery = '' }) {
    */
   const handleAddRequest = async () => {
     setActiveCollection(collection.id);
-    const newRequest = createNewRequest(collection.id);
+    createNewRequest(collection.id);
     setIsExpanded(true);
-    setIsMenuOpen(false);
+    setMenuState({ isOpen: false, x: 0, y: 0 });
+  };
+
+  /**
+   * Handle duplicating collection
+   */
+  const handleDuplicate = async () => {
+    setMenuState({ isOpen: false, x: 0, y: 0 });
+    await duplicateCollection(collection.id);
   };
   
   /**
@@ -91,26 +103,60 @@ function CollectionItem({ collection, searchQuery = '' }) {
   const startRename = () => {
     setRenameValue(collection.name);
     setIsRenaming(true);
-    setIsMenuOpen(false);
+    setMenuState({ isOpen: false, x: 0, y: 0 });
     setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
     }, 0);
   };
+
+  /**
+   * Open context menu at mouse coordinates (right click) or button position
+   */
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const menuWidth = 180;
+    const menuHeight = 160;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 10);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight - 10);
+
+    setMenuState({
+      isOpen: true,
+      x: Math.max(10, x),
+      y: Math.max(10, y),
+    });
+  };
+
+  const handleMenuButtonClick = (e) => {
+    e.stopPropagation();
+    if (menuState.isOpen) {
+      setMenuState({ isOpen: false, x: 0, y: 0 });
+    } else if (menuButtonRef.current) {
+      const rect = menuButtonRef.current.getBoundingClientRect();
+      setMenuState({
+        isOpen: true,
+        x: Math.max(10, rect.left - 130),
+        y: Math.max(10, rect.bottom + 4),
+      });
+    }
+  };
   
   return (
-    <div className="rounded-md">
+    <div className="rounded-md select-none">
       {/* Collection Header */}
       <div
         className={`
           flex items-center gap-2 px-2 py-1.5 cursor-pointer
-          transition-colors group
+          transition-colors group rounded-md
           ${isActive ? 'bg-surface-3' : 'hover:bg-surface-3'}
         `}
         onClick={() => {
           setIsExpanded(!isExpanded);
           setActiveCollection(collection.id);
         }}
+        onContextMenu={handleContextMenu}
       >
         {/* Expand Icon */}
         <span className="text-text-muted flex-shrink-0">
@@ -130,12 +176,11 @@ function CollectionItem({ collection, searchQuery = '' }) {
           )}
         </span>
         
-        {/* Name Container - Fixed structure to prevent layout shift */}
+        {/* Name Container */}
         <div 
           ref={nameContainerRef}
           className="flex-1 min-w-0 relative"
         >
-          {/* Always render the text span to maintain layout */}
           <span 
             className={`
               block text-sm font-medium text-text-primary truncate
@@ -178,74 +223,107 @@ function CollectionItem({ collection, searchQuery = '' }) {
         {/* Context Menu Button */}
         <div className="relative flex-shrink-0">
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsMenuOpen(!isMenuOpen);
-            }}
+            ref={menuButtonRef}
+            onClick={handleMenuButtonClick}
             className={`
               p-1 rounded hover:bg-surface-4 transition-colors
-              ${isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+              ${menuState.isOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
             `}
           >
             <MoreHorizontal size={14} className="text-text-muted" />
           </button>
-          
-          {/* Dropdown Menu */}
-          {isMenuOpen && (
-            <>
-              {/* Backdrop to close menu */}
-              <div 
-                className="fixed inset-0 z-[100]" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMenuOpen(false);
-                }}
-              />
-              
-              <div className="absolute right-0 top-6 z-[101] w-40 py-1 
-                              bg-surface-3 border border-border rounded-md shadow-xl">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAddRequest();
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-sm text-text-secondary
-                             hover:bg-surface-4 hover:text-text-primary
-                             flex items-center gap-2"
-                >
-                  <Plus size={14} />
-                  Add Request
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startRename();
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-sm text-text-secondary
-                             hover:bg-surface-4 hover:text-text-primary
-                             flex items-center gap-2"
-                >
-                  <Edit2 size={14} />
-                  Rename
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsMenuOpen(false);
-                    openDeleteConfirmModal('collection', collection.id, collection.name);
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-sm text-accent-red
-                             hover:bg-accent-red/10
-                             flex items-center gap-2"
-                >
-                  <Trash2 size={14} />
-                  Delete
-                </button>
-              </div>
-            </>
-          )}
         </div>
       </div>
+
+      {/* Fixed Context Menu Overlay */}
+      {menuState.isOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-[100]" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuState({ isOpen: false, x: 0, y: 0 });
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setMenuState({ isOpen: false, x: 0, y: 0 });
+            }}
+          />
+          
+          <div 
+            className="fixed z-[101] w-48 py-1.5 bg-surface-3 border border-border rounded-lg shadow-2xl animate-fade-in text-sm"
+            style={{
+              top: `${menuState.y}px`,
+              left: `${menuState.x}px`,
+            }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAddRequest();
+              }}
+              className="w-full px-3 py-1.5 text-left text-text-secondary
+                         hover:bg-surface-4 hover:text-text-primary
+                         flex items-center gap-2 transition-colors"
+            >
+              <Plus size={14} />
+              Add Request
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDuplicate();
+              }}
+              className="w-full px-3 py-1.5 text-left text-text-secondary
+                         hover:bg-surface-4 hover:text-text-primary
+                         flex items-center gap-2 transition-colors"
+            >
+              <Copy size={14} />
+              Duplicate Collection
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                startRename();
+              }}
+              className="w-full px-3 py-1.5 text-left text-text-secondary
+                         hover:bg-surface-4 hover:text-text-primary
+                         flex items-center gap-2 transition-colors"
+            >
+              <Edit2 size={14} />
+              Rename
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuState({ isOpen: false, x: 0, y: 0 });
+                exportCollection(collection);
+              }}
+              className="w-full px-3 py-1.5 text-left text-text-secondary
+                         hover:bg-surface-4 hover:text-accent-orange
+                         flex items-center gap-2 transition-colors"
+            >
+              <Download size={14} />
+              Export Collection
+            </button>
+            <div className="my-1 border-t border-border" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuState({ isOpen: false, x: 0, y: 0 });
+                openDeleteConfirmModal('collection', collection.id, collection.name);
+              }}
+              className="w-full px-3 py-1.5 text-left text-accent-red
+                         hover:bg-accent-red/10
+                         flex items-center gap-2 transition-colors"
+            >
+              <Trash2 size={14} />
+              Delete
+            </button>
+          </div>
+        </>
+      )}
       
       {/* Requests List */}
       {shouldExpand && filteredRequests && filteredRequests.length > 0 && (

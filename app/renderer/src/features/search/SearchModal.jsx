@@ -141,14 +141,19 @@ function SearchModal() {
   const highlightMatch = (text, query) => {
     if (!query) return text;
     
-    const regex = new RegExp(`(${query})`, 'gi');
-    const parts = text.split(regex);
-    
-    return parts.map((part, i) => 
-      regex.test(part) 
-        ? <mark key={i} className="bg-accent-orange/30 text-text-primary rounded">{part}</mark>
-        : part
-    );
+    try {
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(${escapedQuery})`, 'gi');
+      const parts = text.split(regex);
+      
+      return parts.map((part, i) => 
+        regex.test(part) 
+          ? <mark key={i} className="bg-accent-orange/30 text-text-primary rounded">{part}</mark>
+          : part
+      );
+    } catch (e) {
+      return text;
+    }
   };
   
   return (

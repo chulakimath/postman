@@ -1,103 +1,66 @@
 /**
- * App State Storage
+ * App State Storage (SQLite Backend)
  * 
- * Persists application UI state between sessions.
- * This includes:
- * - Active collection/request
- * - Open tabs
- * - UI preferences (sidebar width, etc.)
- * 
- * This allows users to pick up exactly where they left off.
- * 
- * CRITICAL: Write operations are tracked to ensure completion before app quit.
+ * Persists UI state (open tabs, active requests, drafts) in SQLite `app_state` table.
  */
 
-const fs = require('fs').promises;
-const path = require('path');
-const { app } = require('electron');
-const { trackOperation } = require('../utils/pendingOperations');
+const { getDb } = require('./db');
 
 /**
- * Get the path to the state file
- */
-const getStatePath = () => {
-  const isDev = !app.isPackaged;
-  
-  if (isDev) {
-    return path.join(__dirname, '..', '..', '..', 'storage', 'app-state.json');
-  }
-  
-  return path.join(app.getPath('userData'), 'storage', 'app-state.json');
-};
-
-/**
- * Ensure the storage directory exists
- */
-const ensureDir = async () => {
-  const statePath = getStatePath();
-  const dir = path.dirname(statePath);
-  
-  try {
-    await fs.mkdir(dir, { recursive: true });
-  } catch (error) {
-    if (error.code !== 'EEXIST') {
-      throw error;
-    }
-  }
-};
-
-/**
- * Atomic write helper
- * @param {string} filePath - Target file path
- * @param {Object} data - Data to write
- */
-const atomicWrite = async (filePath, data) => {
-  const tempPath = `${filePath}.tmp`;
-  const content = JSON.stringify(data, null, 2);
-  
-  await fs.writeFile(tempPath, content, 'utf-8');
-  await fs.rename(tempPath, filePath);
-};
-
-/**
- * Save application state
- * TRACKED: This operation is tracked to ensure completion before app quit
+ * Save application state into SQLite table
  * @param {Object} state - State to persist
  */
 const saveState = async (state) => {
-  await ensureDir();
-  
-  const statePath = getStatePath();
-  
-  // Add metadata
-  const stateWithMeta = {
-    ...state,
-    savedAt: Date.now(),
-    version: 1, // For future migrations
-  };
-  
-  // Track this write operation for shutdown handling
-  const writeOperation = atomicWrite(statePath, stateWithMeta);
-  trackOperation(writeOperation);
-  await writeOperation;
+  const db = getDb();
+  const now = Date.now();
+
+  const upsertStmt = db.prepare(`
+    INSERT INTO app_state (key, value, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = excluded.updated_at
+  `);
+
+  const saveAll = db.transaction(() => {
+    Object.keys(state).forEach(key => {
+      const val = typeof state[key] === 'object' ? JSON.stringify(state[key]) : String(state[key]);
+      upsertStmt.run(key, val, now);
+    });
+    upsertStmt.run('_meta_savedAt', String(now), now);
+    upsertStmt.run('_meta_version', '1', now);
+  });
+
+  saveAll();
 };
 
 /**
- * Load previously saved state
+ * Load previously saved application state from SQLite
  * @returns {Promise<Object|null>} Saved state or null
  */
 const loadState = async () => {
   try {
-    const statePath = getStatePath();
-    const content = await fs.readFile(statePath, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return null; // No saved state yet
+    const db = getDb();
+    const rows = db.prepare('SELECT key, value FROM app_state').all();
+
+    if (!rows || rows.length === 0) {
+      return null;
     }
-    
-    // Log error but don't crash - return null to use defaults
-    console.error('Error loading app state:', error);
+
+    const state = {};
+    rows.forEach(row => {
+      if (row.key.startsWith('_meta_')) return;
+
+      try {
+        state[row.key] = JSON.parse(row.value);
+      } catch (e) {
+        state[row.key] = row.value;
+      }
+    });
+
+    return state;
+  } catch (error) {
+    console.error('Error loading app state from SQLite:', error);
     return null;
   }
 };
